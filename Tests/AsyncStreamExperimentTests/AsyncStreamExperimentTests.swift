@@ -164,7 +164,7 @@ struct AsyncStreamV2Tests {
 		scopedLifetime()
 	}
 
-	/* // Equatable & Hashable not yet implemented
+	
 	 @Test("continuation equality")
 	 func continuationEquality() {
 	 let (_, cont1) = AsyncStreamV2<Int>.makeStream()
@@ -175,7 +175,7 @@ struct AsyncStreamV2Tests {
 	 #expect(cont1.hashValue == cont1.hashValue)
 	 #expect(cont1.hashValue != cont2.hashValue)
 	 }
-	 */
+
 
 	@Test("yield returns terminated after finish")
 	func yieldReturnsTerminatedAfterFinish() async {

@@ -226,12 +226,14 @@ extension _Storage {
 		let action: NextAction = lock.whileLocked {
 			switch self.consumerState {
 			case .connected:
+
 				return .failConcurrentAccess
 			case .disconnected:
 				switch self.bufferState {
 				case .empty:
 					switch self.state {
 					case .terminated:
+
 						return .resume(element: nil)
 					case .active:
 						self.consumer = consumer

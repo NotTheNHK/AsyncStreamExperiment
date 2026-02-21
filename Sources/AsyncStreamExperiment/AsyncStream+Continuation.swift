@@ -57,4 +57,16 @@ extension AsyncStreamV2 {
 	}
 }
 
+extension AsyncStreamV2.Continuation: Hashable {
+	public func hash(into hasher: inout Hasher) {
+		return hasher.combine(ObjectIdentifier(self._storage))
+	}
+
+	public static func == (lhs: AsyncStreamV2<Element>.Continuation, rhs: AsyncStreamV2<Element>.Continuation) -> Bool {
+		return lhs._storage === rhs._storage
+	}
+}
+
 extension AsyncStreamV2.Continuation.YieldResult: Sendable where Element: Sendable {}
+
+extension AsyncStreamV2.Continuation.Termination: Hashable where Element: Hashable {}

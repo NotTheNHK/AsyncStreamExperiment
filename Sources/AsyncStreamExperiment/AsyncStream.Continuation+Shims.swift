@@ -54,9 +54,9 @@ extension Continuation.BufferingPolicy {
 		switch self {
 		case .unbounded:
 			return .unbounded
-		case .bufferingOldest(let limit):
+		case let .bufferingOldest(limit):
 			return .bufferingOldest(limit)
-		case .bufferingNewest(let limit):
+		case let .bufferingNewest(limit):
 			return .bufferingNewest(limit)
 		}
 	}
