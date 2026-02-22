@@ -7,21 +7,14 @@
 
 import Foundation
 
-struct UnsafeSendable<Value>: @unchecked Sendable {
-	private var consumed = false
+struct UnsafeSendable<Value: ~Copyable>: @unchecked Sendable, ~Copyable {
 	private let value: Value
 
-	init(_ value: Value) {
+	init(_ value: consuming Value) {
 		self.value = value
 	}
 
 	consuming func take() -> sending Value {
-		precondition(
-			self.consumed == false,
-			"Attempted to consume nonsendable 'value' more than once")
-
-		self.consumed = true
-
 		return self.value
 	}
 }

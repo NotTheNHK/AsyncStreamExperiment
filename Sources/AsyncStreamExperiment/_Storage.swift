@@ -12,7 +12,7 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	typealias Continuation = AsyncStreamExperiment.Continuation<Element, Failure>
 	typealias TerminationHandler = @Sendable (Continuation.Termination) -> Void
 
-	enum State {
+	enum State { // TODO?: Add 'draining' case?
 		case active
 
 		case terminated
@@ -133,8 +133,6 @@ extension _Storage {
 					case .unbounded:
 						result = .enqueued(remaining: .max)
 						self.buffer.append(value)
-
-						return .resume(yieldResult: result, consumer: consumer, element: self.buffer.removeFirst())
 					case let .bufferingOldest(limit):
 						switch count < limit {
 						case true:
@@ -143,8 +141,6 @@ extension _Storage {
 						case false:
 							result = .dropped(value)
 						}
-
-						return .resume(yieldResult: result, consumer: consumer, element: self.buffer.removeFirst())
 					case let .bufferingNewest(limit):
 						switch count < limit {
 						case true:
@@ -213,7 +209,7 @@ extension _Storage {
 		}
 
 		switch action {
-		case let .resume(yieldResult, consumer, element):
+		case let .resume(yieldResult, consumer, element): // UnsafeSendable needed. 'yieldResult' could theoretically hold 'value' too.
 			consumer?.resume(returning: .success(UnsafeSendable(element).take()))
 
 			return yieldResult
@@ -226,14 +222,12 @@ extension _Storage {
 		let action: NextAction = lock.whileLocked {
 			switch self.consumerState {
 			case .connected:
-
 				return .failConcurrentAccess
 			case .disconnected:
 				switch self.bufferState {
 				case .empty:
 					switch self.state {
 					case .terminated:
-
 						return .resume(element: nil)
 					case .active:
 						self.consumer = consumer

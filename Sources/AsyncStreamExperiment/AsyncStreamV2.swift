@@ -29,7 +29,7 @@ extension AsyncStreamV2: AsyncSequence {
 		}
 
 		public func next(isolation actor: isolated (any Actor)?) async throws(Failure) -> Element? {
-			await _storage.next()
+			await self._storage.next()
 		}
 	}
 
