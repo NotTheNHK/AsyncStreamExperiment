@@ -38,6 +38,19 @@ extension AsyncStreamV2 {
 		}
 
 		@discardableResult
+		public func yield() -> YieldResult where Element == Void {
+			return self._storage.yield(()).convertToAsyncStreamYieldResult()
+		}
+
+		@discardableResult
+		public func yield(with result: sending Result<Element, Never>) -> YieldResult {
+			switch result {
+			case let .success(value):
+				return self._storage.yield(value).convertToAsyncStreamYieldResult()
+			}
+		}
+
+		@discardableResult
 		public func yield(_ value: sending Element) -> YieldResult {
 			self._storage.yield(value).convertToAsyncStreamYieldResult()
 		}

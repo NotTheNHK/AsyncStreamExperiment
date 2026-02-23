@@ -10,7 +10,7 @@ class NotSendable {}
 struct AsyncStreamV2Tests {
 	@Test("factory method")
 	func factoryMethod() async {
-		let (stream, continuation) = AsyncStreamV2.makeStream(of: String.self)
+		let (stream, continuation) = AsyncStreamV2<String>.makeStream()
 		continuation.yield("hello")
 
 		var iterator = stream.makeAsyncIterator()
@@ -18,7 +18,7 @@ struct AsyncStreamV2Tests {
 	}
 
 	@Test("yield with no awaiting next")
-	func yieldWithoutConsumer() {
+	func yieldWithoutConsumer() { // How can we translate this to Swift Testing?
 		_ = AsyncStreamV2<String> { continuation in
 			continuation.yield("hello")
 		}
@@ -58,7 +58,7 @@ struct AsyncStreamV2Tests {
 	}
 
 	@Test("yield with no awaiting next detached")
-	func yieldDetachedNoConsumer() {
+	func yieldDetachedNoConsumer() { // How can we translate this to Swift Testing?
 		_ = AsyncStreamV2<String> { continuation in
 			Task.detached {
 				continuation.yield("hello")
@@ -239,7 +239,7 @@ struct AsyncStreamV2Tests {
 	func onTerminationBehaviorWhenCanceled() async {
 		nonisolated(unsafe) var onTerminationCallCount = 0
 
-		let (stream, continuation) = AsyncStream<String>.makeStream()
+		let (stream, continuation) = AsyncStreamV2<String>.makeStream()
 		continuation.onTermination = { reason in
 			onTerminationCallCount += 1
 
@@ -282,65 +282,5 @@ struct AsyncStreamV2Tests {
 
 		#expect(results == ["cancel"])
 		#expect(onTerminationCallCount == 1)
-	}
-
-	@Test("onTermination behavior when canceled throwing")
-	func onTerminationBehaviorWhenCanceledThrowing() async {
-		nonisolated(unsafe) var onTerminationCallCount = 0
-
-		let (stream, continuation) = AsyncThrowingStream<String, Error>.makeStream()
-		continuation.onTermination = { reason in
-			onTerminationCallCount += 1
-
-			switch reason {
-			case .cancelled:
-				break
-			default:
-				Issue.record("unexpected termination reason")
-			}
-
-			// Yielding or re-entrantly terminating the stream should be ignored
-			switch continuation.yield(with: .success("terminated")) {
-			case .terminated:
-				break;
-			default:
-				Issue.record("unexpected yield result")
-			}
-
-			switch continuation.yield(with: .failure(SomeError())) {
-			case .terminated:
-				break;
-			default:
-				Issue.record("unexpected yield result")
-			}
-
-			// Should not re-trigger the callback
-			continuation.finish()
-		}
-
-		continuation.yield("cancel")
-
-		do {
-			let results = try await Task<[String], Error> {
-				var results = [String]()
-				for try await element in stream {
-					results.append(element)
-					switch element {
-					case "cancel":
-						withUnsafeCurrentTask { $0?.cancel() }
-					case "terminated":
-						Issue.record("should not have yielded '\(element)'")
-					default:
-						Issue.record("unexpected element")
-					}
-				}
-				return results
-			}.value
-
-			#expect(results == ["cancel"])
-			#expect(onTerminationCallCount == 1)
-		} catch {
-			Issue.record("unexpected error")
-		}
 	}
 }

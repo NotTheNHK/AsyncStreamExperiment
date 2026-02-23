@@ -12,32 +12,20 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	typealias Continuation = AsyncStreamExperiment.Continuation<Element, Failure>
 	typealias TerminationHandler = @Sendable (Continuation.Termination) -> Void
 
-	enum State { // TODO?: Add 'draining' case?
-		case active
+	enum State {
+		case activeIdle(buffer: Deque<Element>)
+
+		case activeWaiting(consumer: Consumer)
+
+		case draining(buffer: Deque<Element>)
 
 		case terminated
 	}
 
-	enum BufferState {
-		case empty
-
-		case occupied
-	}
-
-	enum ConsumerState {
-		case disconnected
-
-		case connected
-	}
-
 	enum YieldAction {
-		case resume(
-			yieldResult: Continuation.YieldResult,
-			consumer: Optional<Consumer>,
-			element: Optional<Element>)
+		case resume(consumer: Consumer, element: Element?)
 
-		case none(
-			yieldResult: Continuation.YieldResult)
+		case none
 	}
 
 	enum NextAction {
@@ -49,11 +37,9 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	private let lock = Lock.createLock()
-	private var state = State.active
+	private let bufferPolicy: Continuation.BufferingPolicy
 
-	private var consumer: Consumer?
-	private var buffer = Deque<Element>()
-	private var bufferPolicy: Continuation.BufferingPolicy
+	private var state = State.activeIdle(buffer: Deque())
 	private var onTermination: TerminationHandler?
 
 	init(bufferPolicy: Continuation.BufferingPolicy) {
@@ -61,18 +47,8 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	deinit {
-		self.terminate(.cancelled)
+		self.onTermination?(.cancelled)
 		Lock.destructLock(self.lock)
-	}
-}
-
-extension _Storage {
-	var consumerState: ConsumerState { // TODO?: Refactor state machine to single enum?
-		self.consumer == nil ? .disconnected : .connected
-	}
-
-	var bufferState: BufferState { // TODO?: Refactor state machine to single enum?
-		self.buffer.isEmpty ? .empty : .occupied
 	}
 }
 
@@ -89,164 +65,140 @@ extension _Storage {
 		}
 	}
 
-	@Sendable func terminate(_ terminationReason: Continuation.Termination) {
-		let terminationHandler = self.lock.whileLocked {
+	func terminate(_ terminationReason: Continuation.Termination) {
+		let (handler, consumer): (TerminationHandler?, Consumer?) = lock.whileLocked { // TODO?: Replace with enum?
 			switch self.state {
-			case .active:
-				self.state = .terminated
+			case let .activeIdle(buffer):
+				switch buffer.isEmpty {
+				case true:
+					self.state = .terminated
+					return (self.onTermination.take(), nil)
 
-				return self.onTermination.take()
-			case .terminated:
-				return nil
+				case false:
+					self.state = .draining(buffer: buffer)
+					return (self.onTermination.take(), nil)
+				}
+
+			case let .activeWaiting(consumer):
+				self.state = .terminated
+				return (self.onTermination.take(), consumer)
+
+			case .draining, .terminated:
+				return (nil, nil)
 			}
 		}
 
-		terminationHandler?(terminationReason)
+		handler?(terminationReason)
+		consumer?.resume(returning: .success(nil))
 	}
 
 	func yield(_ value: sending Element) -> Continuation.YieldResult {
-		let action: YieldAction = self.lock.whileLocked {
-			let consumerState = self.consumerState // TODO?: Currently, we need to snapshot here
-			let bufferState = self.bufferState // TODO?: Currently, we need to snapshot here
-
-			let consumer = self.consumer.take()
-			let result: Continuation.YieldResult
-			let count = self.buffer.count
-			let remainingCount = { (limit: Int) -> Int in
-				limit - (count + 1)
-			}
-
+		let (result, action): (Continuation.YieldResult, YieldAction) = lock.whileLocked {
 			switch self.state {
-			case .active:
-				switch (consumerState, bufferState) {
-				case (.connected, .empty):
-					switch self.bufferPolicy {
-					case .unbounded:
-						result = .enqueued(remaining: .max)
-					case let .bufferingOldest(limit), let .bufferingNewest(limit):
-						result = .enqueued(remaining: limit)
+			case var .activeIdle(buffer):
+				switch self.bufferPolicy {
+				case .unbounded:
+					buffer.append(value)
+					self.state = .activeIdle(buffer: buffer)
+					return (.enqueued(remaining: .max), .none)
+
+				case let .bufferingOldest(limit):
+					switch buffer.count < limit {
+					case true:
+						buffer.append(value)
+						self.state = .activeIdle(buffer: buffer)
+						return (.enqueued(remaining: limit - buffer.count), .none)
+
+					case false:
+						return (.dropped(value), .none)
 					}
 
-					return .resume(yieldResult: result, consumer: consumer, element: value)
-				case (.connected, .occupied):
-					switch self.bufferPolicy {
-					case .unbounded:
-						result = .enqueued(remaining: .max)
-						self.buffer.append(value)
-					case let .bufferingOldest(limit):
-						switch count < limit {
-						case true:
-							result = .enqueued(remaining: remainingCount(limit))
-							self.buffer.append(value)
-						case false:
-							result = .dropped(value)
-						}
-					case let .bufferingNewest(limit):
-						switch count < limit {
-						case true:
-							result = .enqueued(remaining: remainingCount(limit))
-							self.buffer.append(value)
-						case false:
-							result = .dropped(self.buffer.removeFirst())
-							self.buffer.append(value)
-						}
-					}
+				case let .bufferingNewest(limit):
+					switch buffer.count < limit {
+					case true:
+						buffer.append(value)
+						self.state = .activeIdle(buffer: buffer)
+						return (.enqueued(remaining: limit - buffer.count), .none)
 
-					return .resume(yieldResult: result, consumer: consumer, element: self.buffer.removeFirst())
-				case (.disconnected, .empty):
-					switch self.bufferPolicy {
-					case .unbounded:
-						result = .enqueued(remaining: .max)
-						self.buffer.append(value)
-					case let .bufferingOldest(limit), let .bufferingNewest(limit):
-						result = .enqueued(remaining: remainingCount(limit))
-						self.buffer.append(value)
+					case false:
+						let droppedValue = buffer.removeFirst()
+						buffer.append(value)
+						self.state = .activeIdle(buffer: buffer)
+						return (.dropped(droppedValue), .none)
 					}
-
-					return .none(yieldResult: result)
-				case (.disconnected, .occupied):
-					switch self.bufferPolicy {
-					case .unbounded:
-						result = .enqueued(remaining: .max)
-						self.buffer.append(value)
-					case let .bufferingOldest(limit):
-						switch count < limit {
-						case true:
-							result = .enqueued(remaining: remainingCount(limit))
-							self.buffer.append(value)
-						case false:
-							result = .dropped(value)
-						}
-					case let .bufferingNewest(limit):
-						switch count < limit {
-						case true:
-							result = .enqueued(remaining: remainingCount(limit))
-							self.buffer.append(value)
-						case false:
-							result = .dropped(self.buffer.removeFirst())
-							self.buffer.append(value)
-						}
-					}
-
-					return .none(yieldResult: result)
 				}
-			case .terminated: // TODO: Are these all reachable?
-				switch (consumerState, bufferState) {
-				case (.connected, .empty): // I don't think so??
-					result = .terminated
 
-					return .resume(yieldResult: result, consumer: consumer, element: nil)
-				case (.connected, .occupied):
-					result = .terminated
+			case let .activeWaiting(consumer):
+				self.state = .activeIdle(buffer: Deque())
+				switch self.bufferPolicy {
+				case .unbounded:
+					return (.enqueued(remaining: .max), .resume(consumer: consumer, element: value))
 
-					return .resume(yieldResult: result, consumer: consumer, element: self.buffer.removeFirst())
-				case (.disconnected, .empty), (.disconnected, .occupied):
-					result = .terminated
-
-					return .none(yieldResult: result)
+				case let .bufferingOldest(limit), let .bufferingNewest(limit):
+					return (.enqueued(remaining: limit), .resume(consumer: consumer, element: value))
 				}
+
+			case .draining:
+				return (.terminated, .none)
+
+			case .terminated:
+				return (.terminated, .none)
 			}
 		}
 
 		switch action {
-		case let .resume(yieldResult, consumer, element): // UnsafeSendable needed. 'yieldResult' could theoretically hold 'value' too.
-			consumer?.resume(returning: .success(UnsafeSendable(element).take()))
+		case let .resume(consumer, element):
+			consumer.resume(returning: .success(UnsafeSendable(element).take()))
 
-			return yieldResult
-		case let .none(yieldResult):
-			return yieldResult
+		case .none:
+			break
 		}
+
+		return result
 	}
 
 	func next(_ consumer: Consumer) {
 		let action: NextAction = lock.whileLocked {
-			switch self.consumerState {
-			case .connected:
-				return .failConcurrentAccess
-			case .disconnected:
-				switch self.bufferState {
-				case .empty:
-					switch self.state {
-					case .terminated:
-						return .resume(element: nil)
-					case .active:
-						self.consumer = consumer
+			switch self.state {
+			case var .activeIdle(buffer):
+				switch buffer.isEmpty {
+				case true:
+					self.state = .activeWaiting(consumer: consumer)
+					return .suspend
 
-						return .suspend
-					}
-				case .occupied:
-					let element = self.buffer.removeFirst()
-
+				case false:
+					let element = buffer.removeFirst()
+					self.state = .activeIdle(buffer: buffer)
 					return .resume(element: element)
 				}
+
+			case .activeWaiting:
+				return .failConcurrentAccess
+
+			case var .draining(buffer):
+				switch buffer.isEmpty {
+				case true:
+					self.state = .terminated
+					return .resume(element: nil)
+
+				case false:
+					let element = buffer.removeFirst()
+					self.state = .draining(buffer: buffer)
+					return .resume(element: element)
+				}
+
+			case .terminated:
+				return .resume(element: nil)
 			}
 		}
 
 		switch action {
 		case let .resume(element):
 			consumer.resume(returning: .success(element))
+
 		case .suspend:
-			return
+			break
+
 		case .failConcurrentAccess:
 			fatalError("Concurrent iteration detected")
 		}
