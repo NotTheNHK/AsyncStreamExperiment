@@ -8,7 +8,7 @@
 import Foundation
 
 extension AsyncStreamV2.Continuation.BufferingPolicy {
-	func convertToContinuationBufferingPolicy() -> Continuation<Element, Never>.BufferingPolicy {
+	func convertToContinuationBufferingPolicy() -> _Storage<Element, Never>.Continuation.BufferingPolicy {
 		switch self {
 		case .unbounded:
 			return .unbounded
@@ -21,7 +21,7 @@ extension AsyncStreamV2.Continuation.BufferingPolicy {
 }
 
 extension AsyncStreamV2.Continuation.Termination {
-	func convertToContinuationTermination() -> Continuation<Element, Never>.Termination {
+	func convertToContinuationTermination() -> _Storage<Element, Never>.Continuation.Termination {
 		switch self {
 		case .finished:
 			return .finished(nil)
@@ -33,7 +33,7 @@ extension AsyncStreamV2.Continuation.Termination {
 
 extension AsyncStreamV2.Continuation {
 	func convertToAsyncStreamOnTermination(
-		_ onTermination: (@Sendable (Continuation<Element, Never>.Termination) -> Void)?)
+		_ onTermination: (@Sendable (_Storage<Element, Never>.Continuation.Termination) -> Void)?)
 	-> (@Sendable (Termination) -> Void)? {
 		{ @Sendable termination in
 			onTermination?(termination.convertToContinuationTermination())
@@ -42,14 +42,14 @@ extension AsyncStreamV2.Continuation {
 
 	func convertToContinuationOnTermination(
 		_ onTermination: (@Sendable (Termination) -> Void)?)
-	-> (@Sendable (Continuation<Element, Never>.Termination) -> Void)? {
+	-> (@Sendable (_Storage<Element, Never>.Continuation.Termination) -> Void)? {
 		{ @Sendable termination in
 			onTermination?(termination.convertToAsyncStreamTermination())
 		}
 	}
 }
 
-extension Continuation.BufferingPolicy {
+extension _Storage.Continuation.BufferingPolicy {
 	func convertToAsyncStreamBufferingPolicy() -> AsyncStreamV2<Element>.Continuation.BufferingPolicy {
 		switch self {
 		case .unbounded:
@@ -62,7 +62,7 @@ extension Continuation.BufferingPolicy {
 	}
 }
 
-extension Continuation.YieldResult {
+extension _Storage.Continuation.YieldResult {
 	func convertToAsyncStreamYieldResult() -> AsyncStreamV2<Element>.Continuation.YieldResult {
 		switch self {
 		case let .enqueued(remaining):
@@ -75,7 +75,7 @@ extension Continuation.YieldResult {
 	}
 }
 
-extension Continuation.Termination {
+extension _Storage.Continuation.Termination {
 	func convertToAsyncStreamTermination() -> AsyncStreamV2<Element>.Continuation.Termination {
 		switch self {
 		case .finished:

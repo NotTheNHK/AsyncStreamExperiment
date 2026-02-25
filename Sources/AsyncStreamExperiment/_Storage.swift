@@ -9,7 +9,6 @@ import Collections
 
 final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	typealias Consumer = CheckedContinuation<Result<Element?, Failure>, Never>
-	typealias Continuation = AsyncStreamExperiment.Continuation<Element, Failure>
 	typealias TerminationHandler = @Sendable (Continuation.Termination) -> Void
 
 	enum State {
