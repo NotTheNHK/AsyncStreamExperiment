@@ -54,13 +54,13 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 
 extension _Storage {
 	func getOnTermination() -> TerminationHandler? {
-		self.lock.whileLocked {
+		lock.whileLocked {
 			return self.onTermination
 		}
 	}
 
 	func setOnTermination(_ newValue: TerminationHandler?) {
-		self.lock.whileLocked {
+		lock.whileLocked {
 			self.onTermination = newValue
 		}
 	}
@@ -138,10 +138,7 @@ extension _Storage {
 					return (.enqueued(remaining: limit), .resume(consumer: consumer, element: value))
 				}
 
-			case .draining:
-				return (.terminated, .none)
-
-			case .terminated:
+			case .draining, .terminated:
 				return (.terminated, .none)
 			}
 		}
