@@ -8,7 +8,7 @@
 import Collections
 
 final class _Storage<Element, Failure: Error>: @unchecked Sendable {
-	typealias Consumer = CheckedContinuation<Result<Element?, Failure>, Never>
+	typealias Consumer = UnsafeContinuation<Result<Element?, Failure>, Never>
 	typealias TerminationHandler = @Sendable (Continuation.Termination) -> Void
 
 	enum State {
@@ -19,6 +19,14 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 		case draining(buffer: Deque<Element>)
 
 		case terminated
+	}
+
+	enum TerminateAction {
+		case callHandlerAndResume(TerminationHandler?, Consumer)
+
+		case callHandler(TerminationHandler?)
+
+		case none
 	}
 
 	enum YieldAction {
@@ -65,30 +73,38 @@ extension _Storage {
 	}
 
 	func terminate(_ terminationReason: Continuation.Termination) {
-		let (handler, consumer): (TerminationHandler?, Consumer?) = lock.whileLocked { // TODO?: Replace with enum?
+		let action: TerminateAction = lock.whileLocked {
 			switch self.state {
 			case let .activeIdle(buffer):
 				switch buffer.isEmpty {
 				case true:
 					self.state = .terminated
-					return (self.onTermination.take(), nil)
 
 				case false:
 					self.state = .draining(buffer: buffer)
-					return (self.onTermination.take(), nil)
 				}
+				return .callHandler(self.onTermination.take())
 
 			case let .activeWaiting(consumer):
 				self.state = .terminated
-				return (self.onTermination.take(), consumer)
+				return .callHandlerAndResume(self.onTermination.take(), consumer)
 
 			case .draining, .terminated:
-				return (nil, nil)
+				return .none
 			}
 		}
 
-		handler?(terminationReason)
-		consumer?.resume(returning: .success(nil))
+		switch action {
+		case let .callHandlerAndResume(terminationHandler, consumer):
+			terminationHandler?(terminationReason)
+			consumer.resume(returning: .success(nil))
+
+		case let .callHandler(terminationHandler):
+			terminationHandler?(terminationReason)
+
+		case .none:
+			break
+		}
 	}
 
 	func yield(_ value: sending Element) -> Continuation.YieldResult {
@@ -202,7 +218,7 @@ extension _Storage {
 
 	func next() async throws(Failure) -> Element? {
 		try await withTaskCancellationHandler {
-			await withCheckedContinuation { consumer in
+			await withUnsafeContinuation { consumer in
 				self.next(consumer)
 			}
 		} onCancel: {
