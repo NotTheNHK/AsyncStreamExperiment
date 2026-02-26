@@ -7,10 +7,10 @@
 
 import Foundation
 
-typealias Lock = UnsafeMutablePointer<os_unfair_lock>
+typealias Lock = os_unfair_lock_t
 
 extension Lock {
-	static func createLock() -> Lock {
+	static func create() -> Lock {
 		let lock = Lock.allocate(capacity: 1)
 
 		lock.initialize(to: .init())
@@ -18,13 +18,13 @@ extension Lock {
 		return lock
 	}
 
-	static func destructLock(_ lock: Lock) {
+	static func destroy(_ lock: Lock) {
 		lock.deinitialize(count: 1)
 
 		lock.deallocate()
 	}
 
-	func whileLocked<Value, Failure>(_ action: () throws(Failure) -> Value) throws(Failure) -> Value {
+	func withLock<Value, Failure>(_ action: () throws(Failure) -> Value) throws(Failure) -> Value {
 		os_unfair_lock_lock(self)
 
 		defer { os_unfair_lock_unlock(self) }
