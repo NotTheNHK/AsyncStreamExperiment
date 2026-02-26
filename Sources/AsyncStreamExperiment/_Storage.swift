@@ -9,12 +9,13 @@ import Collections
 
 final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	typealias Consumer = UnsafeContinuation<Result<Element?, Failure>, Never>
+	typealias Consumers = Deque<UnsafeContinuation<Result<Element?, Failure>, Never>>
 	typealias TerminationHandler = @Sendable (Continuation.Termination) -> Void
 
 	enum State {
 		case activeIdle(buffer: Deque<Element>)
 
-		case activeWaiting(consumer: Consumer)
+		case activeWaiting(consumers: Consumers)
 
 		case draining(buffer: Deque<Element>)
 
@@ -22,7 +23,7 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	enum TerminateAction {
-		case callHandlerAndResume(TerminationHandler?, Consumer)
+		case callHandlerAndResume(TerminationHandler?, Consumers)
 
 		case callHandler(TerminationHandler?)
 
@@ -30,7 +31,7 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	enum YieldAction {
-		case resume(consumer: Consumer, element: Element?)
+		case resume(consumers: Consumers, element: Element?)
 
 		case none
 	}
@@ -39,8 +40,6 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 		case resume(element: Element?)
 
 		case suspend
-
-		case failConcurrentAccess
 	}
 
 	private let lock = Lock.createLock()
@@ -85,9 +84,9 @@ extension _Storage {
 				}
 				return .callHandler(self.onTermination.take())
 
-			case let .activeWaiting(consumer):
+			case let .activeWaiting(consumers):
 				self.state = .terminated
-				return .callHandlerAndResume(self.onTermination.take(), consumer)
+				return .callHandlerAndResume(self.onTermination.take(), consumers)
 
 			case .draining, .terminated:
 				return .none
@@ -95,9 +94,12 @@ extension _Storage {
 		}
 
 		switch action {
-		case let .callHandlerAndResume(terminationHandler, consumer):
+		case .callHandlerAndResume(let terminationHandler, var consumers):
 			terminationHandler?(terminationReason)
-			consumer.resume(returning: .success(nil))
+			consumers.removeAll { consumer in
+				consumer.resume(returning: .success(nil))
+				return true
+			}
 
 		case let .callHandler(terminationHandler):
 			terminationHandler?(terminationReason)
@@ -143,24 +145,26 @@ extension _Storage {
 					}
 				}
 
-			case let .activeWaiting(consumer):
+			case let .activeWaiting(consumers):
 				self.state = .activeIdle(buffer: Deque())
 				switch self.bufferPolicy {
 				case .unbounded:
-					return (.enqueued(remaining: .max), .resume(consumer: consumer, element: value))
+					return (.enqueued(remaining: .max), .resume(consumers: consumers, element: value))
 
 				case let .bufferingOldest(limit), let .bufferingNewest(limit):
-					return (.enqueued(remaining: limit), .resume(consumer: consumer, element: value))
+					return (.enqueued(remaining: limit), .resume(consumers: consumers, element: value))
 				}
-
 			case .draining, .terminated:
 				return (.terminated, .none)
 			}
 		}
 
 		switch action {
-		case let .resume(consumer, element):
-			consumer.resume(returning: .success(UnsafeSendable(element).take()))
+		case .resume(var consumers, let element):
+			consumers.removeAll { consumer in
+				consumer.resume(returning: .success(UnsafeSendable(element).take()))
+				return true
+			}
 
 		case .none:
 			break
@@ -175,7 +179,7 @@ extension _Storage {
 			case var .activeIdle(buffer):
 				switch buffer.isEmpty {
 				case true:
-					self.state = .activeWaiting(consumer: consumer)
+					self.state = .activeWaiting(consumers: [consumer])
 					return .suspend
 
 				case false:
@@ -184,8 +188,10 @@ extension _Storage {
 					return .resume(element: element)
 				}
 
-			case .activeWaiting:
-				return .failConcurrentAccess
+			case var .activeWaiting(consumers):
+				consumers.append(consumer)
+				self.state = .activeWaiting(consumers: consumers)
+				return .suspend
 
 			case var .draining(buffer):
 				switch buffer.isEmpty {
@@ -198,7 +204,6 @@ extension _Storage {
 					self.state = .draining(buffer: buffer)
 					return .resume(element: element)
 				}
-
 			case .terminated:
 				return .resume(element: nil)
 			}
@@ -210,9 +215,6 @@ extension _Storage {
 
 		case .suspend:
 			break
-
-		case .failConcurrentAccess:
-			fatalError("Concurrent iteration detected")
 		}
 	}
 
