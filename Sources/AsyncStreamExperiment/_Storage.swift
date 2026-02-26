@@ -43,7 +43,7 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 		case failConcurrentAccess
 	}
 
-	private let lock = Lock.createLock()
+	private let lock = Lock.create()
 	private let bufferPolicy: Continuation.BufferingPolicy
 
 	private var state = State.activeIdle(buffer: Deque())
@@ -55,25 +55,25 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 
 	deinit {
 		self.onTermination?(.cancelled)
-		Lock.destructLock(self.lock)
+		Lock.destroy(self.lock)
 	}
 }
 
 extension _Storage {
 	func getOnTermination() -> TerminationHandler? {
-		lock.whileLocked {
+		lock.withLock {
 			return self.onTermination
 		}
 	}
 
 	func setOnTermination(_ newValue: TerminationHandler?) {
-		lock.whileLocked {
+		lock.withLock {
 			self.onTermination = newValue
 		}
 	}
 
 	func terminate(_ terminationReason: Continuation.Termination) {
-		let action: TerminateAction = lock.whileLocked {
+		let action: TerminateAction = lock.withLock {
 			switch self.state {
 			case let .activeIdle(buffer):
 				switch buffer.isEmpty {
@@ -108,7 +108,7 @@ extension _Storage {
 	}
 
 	func yield(_ value: sending Element) -> Continuation.YieldResult {
-		let (result, action): (Continuation.YieldResult, YieldAction) = lock.whileLocked {
+		let (result, action): (Continuation.YieldResult, YieldAction) = lock.withLock {
 			switch self.state {
 			case var .activeIdle(buffer):
 				switch self.bufferPolicy {
@@ -170,7 +170,7 @@ extension _Storage {
 	}
 
 	func next(_ consumer: Consumer) {
-		let action: NextAction = lock.whileLocked {
+		let action: NextAction = lock.withLock {
 			switch self.state {
 			case var .activeIdle(buffer):
 				switch buffer.isEmpty {
