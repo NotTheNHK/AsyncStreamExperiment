@@ -1,12 +1,6 @@
 import Testing
 @testable import AsyncStreamExperiment
 
-struct SomeError: Error, Equatable {
-	var value = Int.random(in: 0..<100)
-}
-
-class NotSendable {}
-
 struct AsyncStreamV2Tests {
 	@Test("factory method")
 	func factoryMethod() async {
