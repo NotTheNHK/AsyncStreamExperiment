@@ -158,17 +158,46 @@ struct AsyncStreamV2Tests {
 		scopedLifetime()
 	}
 
-	
-	 @Test("continuation equality")
-	 func continuationEquality() {
-	 let (_, cont1) = AsyncStreamV2<Int>.makeStream()
-	 let (_, cont2) = AsyncStreamV2<Int>.makeStream()
 
-	 #expect(cont1 == cont1)
-	 #expect(cont1 != cont2)
-	 #expect(cont1.hashValue == cont1.hashValue)
-	 #expect(cont1.hashValue != cont2.hashValue)
-	 }
+	@Test("continuation equality")
+	func continuationEquality() {
+		let (_, cont1) = AsyncStreamV2<Int>.makeStream()
+		let (_, cont2) = AsyncStreamV2<Int>.makeStream()
+
+		#expect(cont1 == cont1)
+		#expect(cont1 != cont2)
+		#expect(cont1.hashValue == cont1.hashValue)
+		#expect(cont1.hashValue != cont2.hashValue)
+	}
+
+	@Test("finish behavior with multiple consumers")
+	func finishBehaviorWithMultipleConsumers() async throws {
+		let (stream, continuation) = AsyncStreamV2<Int>.makeStream()
+		let (controlStream, controlContinuation) = AsyncStreamV2<Int>.makeStream()
+		let controlIterator = controlStream.makeAsyncIterator()
+
+		func makeConsumingTaskWithIndex(_ index: Int) -> Task<Void, Never> {
+			Task { @MainActor in
+				controlContinuation.yield(index)
+				for await i in stream {
+					controlContinuation.yield(i)
+				}
+			}
+		}
+
+		let consumer1 = makeConsumingTaskWithIndex(1)
+		#expect(await controlIterator.next(isolation: #isolation) == 1)
+
+		let consumer2 = makeConsumingTaskWithIndex(2)
+		#expect(await controlIterator.next(isolation: #isolation) == 2)
+
+		await MainActor.run {}
+
+		continuation.finish()
+
+		_ = await consumer1.value
+		_ = await consumer2.value
+	}
 
 
 	@Test("yield returns terminated after finish")
