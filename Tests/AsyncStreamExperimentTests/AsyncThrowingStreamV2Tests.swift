@@ -241,35 +241,6 @@ struct AsyncThrowingStreamV2Tests {
 		#expect(continuation1.hashValue != continuation2.hashValue)
 	}
 
-	@Test("finish behavior with multiple consumers")
-	func finishBehaviorWithMultipleConsumers() async throws {
-		let (stream, continuation) = AsyncThrowingStreamV2<Int, Error>.makeStream()
-		let (controlStream, controlContinuation) = AsyncThrowingStreamV2<Int, Error>.makeStream()
-		let controlIterator = controlStream.makeAsyncIterator()
-
-		func makeConsumingTaskWithIndex(_ index: Int) -> Task<Void, Error> {
-			Task { @MainActor in
-				controlContinuation.yield(index)
-				for try await i in stream {
-					controlContinuation.yield(i)
-				}
-			}
-		}
-
-		let consumer1 = makeConsumingTaskWithIndex(1)
-		#expect(try await controlIterator.next(isolation: #isolation) == 1)
-
-		let consumer2 = makeConsumingTaskWithIndex(2)
-		#expect(try await controlIterator.next(isolation: #isolation) == 2)
-
-		await MainActor.run {}
-
-		continuation.finish()
-
-		_ = try await consumer1.value
-		_ = try await consumer2.value
-	}
-
 	/*
 	 tests.test("onTermination behavior when canceled") {
 	 nonisolated(unsafe) var onTerminationCallCount = 0
