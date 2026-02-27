@@ -31,9 +31,9 @@ extension AsyncStreamV2 {
 			case cancelled
 		}
 
-		private let _storage: _Storage<Element, Failure>
+		private let _storage: _Storage<Element, Never>
 
-		init(_storage: _Storage<Element, Failure>) {
+		init(_storage: _Storage<Element, Never>) {
 			self._storage = _storage
 		}
 
