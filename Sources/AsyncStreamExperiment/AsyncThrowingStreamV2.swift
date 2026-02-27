@@ -41,6 +41,7 @@ extension AsyncThrowingStreamV2: AsyncSequence {
 extension AsyncThrowingStreamV2 {
 	init(
 		_ elementType: Element.Type = Element.self,
+		_ failureType: Failure.Type = Failure.self,
 		bufferingPolicy: AsyncThrowingStreamV2<Element, Failure>.Continuation.BufferingPolicy = .unbounded,
 		_ build: (AsyncThrowingStreamV2<Element, Failure>.Continuation) -> Void) {
 			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
