@@ -31,7 +31,7 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	enum YieldAction {
-		case resume(consumers: Consumers, element: Element?)
+		case resume(consumer: Consumer, element: Element?)
 
 		case none
 	}
@@ -96,7 +96,7 @@ extension _Storage {
 		switch action {
 		case .callHandlerAndResume(let terminationHandler, var consumers):
 			terminationHandler?(terminationReason)
-			consumers.removeAll { consumer in
+			consumers.removeAll { consumer in // TODO: Don't like this
 				consumer.resume(returning: .success(nil))
 				return true
 			}
@@ -145,14 +145,22 @@ extension _Storage {
 					}
 				}
 
-			case let .activeWaiting(consumers):
-				self.state = .activeIdle(buffer: Deque())
+			case var .activeWaiting(consumers): // TODO: Needs further refinement
+				let consumer = consumers.removeFirst()
+
+				switch consumers.isEmpty {
+				case true:
+					self.state = .activeIdle(buffer: Deque())
+				case false:
+					self.state = .activeWaiting(consumers: consumers)
+				}
+
 				switch self.bufferPolicy {
 				case .unbounded:
-					return (.enqueued(remaining: .max), .resume(consumers: consumers, element: value))
+					return (.enqueued(remaining: .max), .resume(consumer: consumer, element: value))
 
 				case let .bufferingOldest(limit), let .bufferingNewest(limit):
-					return (.enqueued(remaining: limit), .resume(consumers: consumers, element: value))
+					return (.enqueued(remaining: limit), .resume(consumer: consumer, element: value))
 				}
 			case .draining, .terminated:
 				return (.terminated, .none)
@@ -160,11 +168,8 @@ extension _Storage {
 		}
 
 		switch action {
-		case .resume(var consumers, let element):
-			consumers.removeAll { consumer in
-				consumer.resume(returning: .success(UnsafeSendable(element).take()))
-				return true
-			}
+		case let .resume(consumer, element):
+			consumer.resume(returning: .success(UnsafeSendable(element).take()))
 
 		case .none:
 			break
