@@ -306,4 +306,74 @@ struct AsyncStreamV2Tests {
 		#expect(results == ["cancel"])
 		#expect(onTerminationCallCount == 1)
 	}
+
+	@Test("element delivery with multiple consumers")
+	func elementDeliveryWithMultipleConsumers() async throws {
+		final class Collector: @unchecked Sendable {
+			var received: [Int] = []
+		}
+		let collector = Collector()
+		let (stream, continuation) = AsyncStreamV2<Int>.makeStream()
+		let (controlStream, controlContinuation) = AsyncStreamV2<Int>.makeStream()
+		let controlIterator = controlStream.makeAsyncIterator()
+
+		let consumer1 = Task { @MainActor in
+			controlContinuation.yield(1)
+			for await value in stream {
+				collector.received.append(value)
+			}
+		}
+		#expect(await controlIterator.next(isolation: #isolation) == 1)
+
+		let consumer2 = Task { @MainActor in
+			controlContinuation.yield(2)
+			for await value in stream {
+				collector.received.append(value)
+			}
+		}
+		#expect(await controlIterator.next(isolation: #isolation) == 2)
+
+		// Ensure both consumers are suspended in next()
+		await MainActor.run {}
+
+		continuation.yield(10)
+		continuation.yield(20)
+		continuation.yield(30)
+		continuation.yield(40)
+		continuation.finish()
+
+		_ = await consumer1.value
+		_ = await consumer2.value
+
+		// Each element should be delivered to exactly one consumer — none lost or duplicated
+		#expect(collector.received.sorted() == [10, 20, 30, 40])
+	}
+
+	@Test("cancellation of one consumer terminates the stream for all consumers")
+	func cancellationOfOneConsumerTerminatesTheStreamForAllConsumers() async throws {
+		let (stream, _) = AsyncStreamV2<Int>.makeStream()
+		let (controlStream, controlContinuation) = AsyncStreamV2<Int>.makeStream()
+		let controlIterator = controlStream.makeAsyncIterator()
+
+		let consumer1 = Task { @MainActor in
+			controlContinuation.yield(1)
+			for await _ in stream {}
+		}
+		#expect(await controlIterator.next(isolation: #isolation) == 1)
+
+		let consumer2 = Task { @MainActor in
+			controlContinuation.yield(2)
+			for await _ in stream {}
+		}
+		#expect(await controlIterator.next(isolation: #isolation) == 2)
+
+		await MainActor.run {}
+
+		// Cancelling consumer1 triggers storage.cancel(), terminating the stream
+		// and resuming all waiting continuations — including consumer2's
+		consumer1.cancel()
+
+		_ = await consumer1.value
+		_ = await consumer2.value
+	}
 }
