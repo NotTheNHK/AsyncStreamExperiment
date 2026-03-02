@@ -134,7 +134,7 @@ struct AsyncStreamV2Tests {
 	func terminationOnDeinitAfterFinishIsFinished() async {
 		func scopedLifetime() {
 			_ = AsyncStreamV2<Int> { continuation in
-				continuation.onTermination = { @Sendable terminal in
+				continuation.onTermination = { terminal in
 					#expect(terminal == .finished)
 				}
 				continuation.finish()
@@ -143,21 +143,6 @@ struct AsyncStreamV2Tests {
 
 		scopedLifetime()
 	}
-
-	@Test("termination behavior on deinit with finish called")
-	func terminationOnDeinitAfterFinish() async {
-		func scopedLifetime() {
-			_ = AsyncStreamV2<Int> { continuation in
-				continuation.onTermination = { _ in
-					#expect(Bool(true))
-				}
-				continuation.finish()
-			}
-		}
-
-		scopedLifetime()
-	}
-
 
 	@Test("continuation equality")
 	func continuationEquality() {
@@ -377,6 +362,68 @@ struct AsyncStreamV2Tests {
 		_ = await consumer2.value
 	}
 
+	@Test("bufferingOldest semantics")
+	func bufferingOldestSemantics() async throws {
+		let (stream, continuation) = AsyncStreamV2<String>.makeStream(
+			bufferingPolicy: .bufferingOldest(3))
+
+		let r1 = continuation.yield("a")
+		let r2 = continuation.yield("b")
+		let r3 = continuation.yield("c") // buffer now full
+		let r4 = continuation.yield("d") // should be dropped
+		let r5 = continuation.yield("e") // should be dropped
+		continuation.finish()
+
+		if case .enqueued(let remaining) = r1 { #expect(remaining == 2) }
+		else { Issue.record("expected .enqueued(2) for r1") }
+		if case .enqueued(let remaining) = r2 { #expect(remaining == 1) }
+		else { Issue.record("expected .enqueued(1) for r2") }
+		if case .enqueued(let remaining) = r3 { #expect(remaining == 0) }
+		else { Issue.record("expected .enqueued(0) for r3") }
+		if case .dropped(let value) = r4 { #expect(value == "d") }
+		else { Issue.record("expected .dropped(d) for r4") }
+		if case .dropped(let value) = r5 { #expect(value == "e") }
+		else { Issue.record("expected .dropped(e) for r5") }
+
+		var iterator = stream.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "a")
+		#expect(await iterator.next(isolation: #isolation) == "b")
+		#expect(await iterator.next(isolation: #isolation) == "c")
+		#expect(await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("bufferingNewest semantics")
+	func bufferingNewestSemantics() async throws {
+		let (stream, continuation) = AsyncStreamV2.makeStream(
+			of: String.self,
+			bufferingPolicy: .bufferingNewest(3))
+
+		let r1 = continuation.yield("a")
+		let r2 = continuation.yield("b")
+		let r3 = continuation.yield("c")
+		let r4 = continuation.yield("d") // full: evicts oldest "a"
+		let r5 = continuation.yield("e") // full: evicts oldest "b"
+		continuation.finish()
+
+		if case .enqueued(let remaining) = r1 { #expect(remaining == 2) }
+		else { Issue.record("expected .enqueued(2) for r1") }
+		if case .enqueued(let remaining) = r2 { #expect(remaining == 1) }
+		else { Issue.record("expected .enqueued(1) for r2") }
+		if case .enqueued(let remaining) = r3 { #expect(remaining == 0) }
+		else { Issue.record("expected .enqueued(0) for r3") }
+		// The dropped value is the evicted oldest, not the incoming element
+		if case .dropped(let value) = r4 { #expect(value == "a") }
+		else { Issue.record("expected .dropped(a) for r4") }
+		if case .dropped(let value) = r5 { #expect(value == "b") }
+		else { Issue.record("expected .dropped(b) for r5") }
+
+		var iterator = stream.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "c")
+		#expect(await iterator.next(isolation: #isolation) == "d")
+		#expect(await iterator.next(isolation: #isolation) == "e")
+		#expect(await iterator.next(isolation: #isolation) == nil)
+	}
+
 	@Test("buffering zero capacity drops all")
 	func bufferingZeroCapacityDropsAll() async {
 		// bufferingOldest(0): every yield dropped immediately
@@ -408,7 +455,6 @@ struct AsyncStreamV2Tests {
 
 	@Test("buffering negative capacity drops all")
 	func bufferingNegativeCapacityDropsAll() async throws {
-		// bufferingOldest(-1): every yield dropped immediately
 		let (oldestStream, oldestCont) = AsyncStreamV2<Int>.makeStream(
 			bufferingPolicy: .bufferingOldest(-1)
 		)
@@ -432,5 +478,163 @@ struct AsyncStreamV2Tests {
 		newestCont.finish()
 		let newestIt = newestStream.makeAsyncIterator()
 		#expect(await newestIt.next(isolation: #isolation) == nil)
+	}
+
+	@Test("yield result enqueued remaining unbounded")
+	func yieldResultEnqueuedRemainingUnbounded() async throws {
+		let (stream, cont) = AsyncStreamV2<String>.makeStream()
+
+		if case let .enqueued(remaining) = cont.yield("hello") {
+			#expect(remaining == Int.max)
+		} else {
+			Issue.record("expected .enqueued(Int.max) for unbounded stream")
+		}
+
+		_ = stream
+	}
+
+	@Test("yield result enqueued remaining bounded")
+	func yieldResultEnqueuedRemainingBounded() async throws {
+		let (stream, cont) = AsyncStreamV2.makeStream(
+			of: String.self,
+			bufferingPolicy: .bufferingOldest(3))
+
+		let r1 = cont.yield("a")
+		let r2 = cont.yield("b")
+		let r3 = cont.yield("c")
+		let r4 = cont.yield("d")
+
+		if case let .enqueued(r1) = r1 { #expect(r1 == 2) }
+		else { Issue.record("expected .enqueued(2) for b1") }
+		if case let .enqueued(r2) = r2 { #expect(r2 == 1) }
+		else { Issue.record("expected .enqueued(1) for b2") }
+		if case let .enqueued(r3) = r3 { #expect(r3 == 0) }
+		else { Issue.record("expected .enqueued(0) for b3") }
+		if case .dropped = r4 { #expect(true) }
+		else { Issue.record("expected .dropped for b4 when buffer full") }
+
+		_ = stream
+	}
+
+	@Test("yield .terminated after finish")
+	func yieldResultTerminated() async throws {
+		let (stream, cont) = AsyncStreamV2<String>.makeStream()
+
+		cont.finish()
+
+		if case .terminated = cont.yield("after finish") {
+			#expect(true)
+		} else {
+			Issue.record("expected .terminated for yield after finish")
+		}
+
+		_ = stream
+	}
+
+	@Test("yield(with:) success")
+	func yieldWithSuccess() async throws {
+		let (stream, cont) = AsyncStreamV2<String>.makeStream()
+
+		cont.yield(with: .success("hello"))
+		cont.finish()
+
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == "hello")
+		#expect(await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("yield void element")
+	func yieldVoidElement() async throws {
+		let (stream, cont) = AsyncStreamV2<Void>.makeStream()
+
+		if case .enqueued = cont.yield() {
+			#expect(true)
+		} else {
+			Issue.record("expected .enqueued for void yield")
+		}
+
+		cont.finish()
+
+		let iterator = stream.makeAsyncIterator()
+
+		try #require(await iterator.next(isolation: #isolation))
+	}
+
+	@Test("task cancellation terminates stream")
+	func taskCancellationTerminatesStream() async throws {
+		let (stream, continuation) = AsyncStreamV2<Int>.makeStream()
+		continuation.onTermination = { terminal in
+			#expect(terminal == .cancelled)
+		}
+
+		let (controlStream, controlContinuation) = AsyncStreamV2<Void>.makeStream()
+		let controlIterator = controlStream.makeAsyncIterator()
+
+		let task = Task { @MainActor in
+			let iterator = stream.makeAsyncIterator()
+
+			controlContinuation.yield(Void())
+
+			return await iterator.next(isolation: #isolation)
+		}
+
+		_ = await controlIterator.next(isolation: #isolation)
+
+		await MainActor.run {}
+
+		#expect(continuation.onTermination != nil)
+		task.cancel()
+		#expect(continuation.onTermination == nil)
+
+		#expect(await task.value == nil)
+	}
+
+	@Test("onTermination finished reason")
+	func onTerminationFinishedReason() async throws {
+		let (_, continuation) = AsyncStreamV2<String>.makeStream()
+
+		continuation.onTermination = { terminal in
+			#expect(terminal == .finished)
+		}
+
+		continuation.finish()
+	}
+
+	@Test("onTermination called exactly once")
+	func onTerminationThrowingFinishedReasons() async throws {
+		nonisolated(unsafe) var counter = 0
+		let (_, continuation) = AsyncStreamV2<String>.makeStream()
+
+		continuation.onTermination = { _ in counter += 1 }
+		continuation.finish()
+
+		continuation.onTermination = { _ in counter += 1 }
+		continuation.finish()
+
+		#expect(counter == 1)
+	}
+
+	@Test("finish idempotence non throwing")
+	func finishIdempotenceNonThrowing() async throws {
+		let series = AsyncStreamV2(String.self) { continuation in
+			nonisolated(unsafe) var terminalCallCount = 0
+
+			continuation.onTermination = { _ in terminalCallCount += 1 }
+
+			continuation.yield("hello")
+
+			continuation.finish()
+			#expect(terminalCallCount == 1)
+
+			continuation.finish()
+			#expect(terminalCallCount == 1)
+		}
+
+		let iterator = series.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == "hello")
+		#expect(await iterator.next(isolation: #isolation) == nil)
+		#expect(await iterator.next(isolation: #isolation) == nil)
 	}
 }

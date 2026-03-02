@@ -213,17 +213,36 @@ struct AsyncThrowingStreamV2Tests {
 	}
 
 	@Test("cancellation behavior on deinit with no values being awaited throwing")
-	func cancellationBehaviorOnDeinitWithNoValuesBeingAwaitedThrowing() async throws {
+	func cancellationOnDeinit() async {
 		func scopedLifetime() {
-			_ = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+			_ = AsyncThrowingStreamV2<Int, Error> { continuation in
+				continuation.onTermination = { terminal in
+					switch terminal {
+					case .cancelled:
+						#expect(true)
+					case .finished:
+						Issue.record("Wrong Termination State")
+					}
+				}
+			}
+		}
+
+		scopedLifetime()
+	}
+
+	@Test("onTermination receives .finished when finish() is called throwing")
+	func terminationOnDeinitAfterFinishIsFinished() async {
+		func scopedLifetime() {
+			_ = AsyncThrowingStreamV2<Int, Error> { continuation in
 				continuation.onTermination = { terminal in
 					switch terminal {
 					case .finished:
-						Issue.record("Wrong Termination State")
+						#expect(true)
 					case .cancelled:
-						#expect(Bool(true))
+						Issue.record("Wrong Termination State")
 					}
 				}
+				continuation.finish()
 			}
 		}
 
@@ -327,6 +346,53 @@ struct AsyncThrowingStreamV2Tests {
 			#expect(onTerminationCallCount == 1)
 		} catch {
 			Issue.record("unexpected error")
+		}
+	}
+
+	@Test("buffering policy semantics throwing")
+	func bufferingPolicySemanticsThrowing() async throws {
+		// bufferingOldest(2): first two kept, third dropped (incoming is dropped)
+		let (oldestStream, oldestCont) = AsyncThrowingStreamV2<String, Error>.makeStream(
+			bufferingPolicy: .bufferingOldest(2))
+
+		_ = oldestCont.yield("a")
+		_ = oldestCont.yield("b")
+		let oldestDropped = oldestCont.yield("c")
+
+		if case .dropped(let value) = oldestDropped { #expect(value == "c") }
+		else { Issue.record("expected .dropped(c) for oldest overflow") }
+
+		oldestCont.finish()
+
+		do {
+			var oldestIt = oldestStream.makeAsyncIterator()
+			#expect(try await oldestIt.next(isolation: #isolation) == "a")
+			#expect(try await oldestIt.next(isolation: #isolation) == "b")
+			#expect(try await oldestIt.next(isolation: #isolation) == nil)
+		} catch {
+			Issue.record("unexpected error in bufferingOldest throwing test")
+		}
+
+		// bufferingNewest(2): oldest evicted when full, newest kept
+		let (newestStream, newestCont) = AsyncThrowingStreamV2<String, Error>.makeStream(
+			bufferingPolicy: .bufferingNewest(2))
+
+		_ = newestCont.yield("x")
+		_ = newestCont.yield("y")
+		let newestDropped = newestCont.yield("z")
+
+		if case .dropped(let value) = newestDropped { #expect(value == "x") }
+		else { Issue.record("expected .dropped(x) eviction for newest overflow") }
+
+		newestCont.finish()
+
+		do {
+			var newestIt = newestStream.makeAsyncIterator()
+			#expect(try await newestIt.next(isolation: #isolation) == "y")
+			#expect(try await newestIt.next(isolation: #isolation) == "z")
+			#expect(try await newestIt.next(isolation: #isolation) == nil)
+		} catch {
+			Issue.record("unexpected error in bufferingNewest throwing test")
 		}
 	}
 
@@ -487,5 +553,182 @@ struct AsyncThrowingStreamV2Tests {
 
 		_ = try await consumer1.value
 		_ = try await consumer2.value
+	}
+
+	@Test("yield .terminated after finish throwing")
+	func yieldResultTerminatedThrowing() async throws {
+		let (stream, cont) = AsyncThrowingStreamV2<String, Error>.makeStream()
+
+		cont.finish(throwing: SomeError())
+
+		if case .terminated = cont.yield("after throw") {
+			#expect(true)
+		} else {
+			Issue.record("expected .terminated for yield after finish(throwing:)")
+		}
+
+		_ = stream
+	}
+
+	@Test("yield(with:) success throwing")
+	func yieldWithAuccessThrowing() async throws {
+		let (stream, cont) = AsyncThrowingStreamV2<String, Error>.makeStream()
+
+		cont.yield(with: .success("world"))
+		cont.finish()
+
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(try await iterator.next(isolation: #isolation) == "world")
+		#expect(try await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("yield with failure result terminates stream throwing")
+	func yieldWithFailureResultTerminatesStreamThrowing() async throws {
+		let series = AsyncThrowingStreamV2<String, SomeError> { continuation in
+			continuation.yield("before error")
+
+			if case .terminated = continuation.yield(with: .failure(SomeError())) {
+				#expect(true)
+			} else {
+				Issue.record("expected .terminated from yield(with: .failure)")
+			}
+
+			if case .terminated = continuation.yield("should not appear") {
+				#expect(true)
+			} else {
+				Issue.record("expected .terminated after error")
+			}
+		}
+
+		let iterator = series.makeAsyncIterator()
+
+		#expect(try await iterator.next(isolation: #isolation) == "before error")
+		await #expect(throws: SomeError.self) {
+			try await iterator.next(isolation: #isolation)
+		}
+		#expect(try await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("yield void element throwing")
+	func yieldVoidElementThrowing() async throws {
+		let (stream, cont) = AsyncThrowingStreamV2<Void, Error>.makeStream()
+
+		if case .enqueued = cont.yield() {
+			#expect(true)
+		} else {
+			Issue.record("expected .enqueued for void yield")
+		}
+
+		cont.finish()
+
+		let iterator = stream.makeAsyncIterator()
+
+		try #require(try await iterator.next(isolation: #isolation))
+	}
+
+	@Test("task cancellation terminates throwing stream")
+	func taskCancellationTerminatesThrowingStream() async throws {
+		let (stream, _) = AsyncThrowingStreamV2<Int, Error>.makeStream()
+
+		let (controlStream, controlContinuation) = AsyncStreamV2<Void>.makeStream()
+		let controlIterator = controlStream.makeAsyncIterator()
+
+		let task = Task { @MainActor in
+			let iterator = stream.makeAsyncIterator()
+
+			controlContinuation.yield(Void())
+
+			return try await iterator.next(isolation: #isolation)
+		}
+
+		_ = await controlIterator.next(isolation: #isolation)
+
+		await MainActor.run {}
+
+		task.cancel()
+
+		#expect(try await task.value == nil)
+	}
+
+	@Test("onTermination throwing finished reasons no error")
+	func onTerminationThrowingFinishedReasonsNoError() async throws {
+		let (_, continuation) = AsyncThrowingStreamV2<String, Error>.makeStream()
+
+		continuation.onTermination = { terminal in
+			switch terminal {
+			case let .finished(failure):
+				#expect(failure == nil)
+			case .cancelled:
+				Issue.record("Wrong terminal state")
+			}
+		}
+
+		continuation.finish()
+	}
+
+	@Test("onTermination throwing finished reasons with error")
+	func onTerminationThrowingFinishedReasonsWithError() async throws {
+		let (_, continuation) = AsyncThrowingStreamV2<String, SomeError>.makeStream()
+
+		continuation.onTermination = { terminal in
+			switch terminal {
+			case let .finished(failure):
+				#expect(failure != nil)
+			case .cancelled:
+				Issue.record("Wrong terminal state")
+			}
+		}
+
+		continuation.finish(throwing: SomeError())
+	}
+
+	@Test("for try await")
+	func forTryAwait() async throws {
+		let (stream, continuation) = AsyncThrowingStreamV2<String, Error>.makeStream()
+
+		continuation.yield("hello")
+		continuation.yield("world")
+		continuation.finish()
+
+		var collected = [String]()
+
+		for try await element in stream {
+			collected.append(element)
+		}
+
+		#expect(collected == ["hello", "world"])
+	}
+
+	@Test("for try await Throwing")
+	func forTryAwaitThrowing() async throws {
+		let (stream, continuation) = AsyncThrowingStreamV2<String, Error>.makeStream()
+
+		continuation.yield("hello")
+		continuation.finish(throwing: SomeError())
+
+		await #expect(throws: SomeError.self) {
+			for try await element in stream {
+				#expect(element == "hello")
+			}
+		}
+	}
+
+	@Test("onTermination after finish throwing")
+	func onTerminationAfterFinishThrowing() async throws {
+		nonisolated(unsafe) var onTerminationCalled = false
+
+		func scopedLifetime() {
+			_ = AsyncThrowingStreamV2(String.self, SomeError.self) { continuation in
+				continuation.onTermination = { _ in
+					onTerminationCalled = true
+				}
+				continuation.finish()
+			}
+		}
+
+		scopedLifetime()
+
+		#expect(onTerminationCalled == true)
 	}
 }
