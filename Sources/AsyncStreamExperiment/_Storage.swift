@@ -17,17 +17,9 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 
 		case activeWaiting(consumers: Consumers)
 
-		case draining(buffer: Deque<Element>)
+		case draining(buffer: Deque<Element>, failure: Failure? = nil)
 
-		case terminated
-	}
-
-	enum TerminateAction {
-		case callHandlerAndResume(TerminationHandler?, Consumers)
-
-		case callHandler(TerminationHandler?)
-
-		case none
+		case terminated(failure: Failure? = nil)
 	}
 
 	enum YieldAction {
@@ -39,9 +31,19 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	enum NextAction {
 		case resume(element: Element?)
 
+		case throwing(failure: Failure)
+
 		case suspend
 	}
 
+	enum TerminateAction {
+		case callHandlerAndResume(terminationHandler: TerminationHandler?, consumers: Consumers, failure: Failure?)
+
+		case callHandler(terminationHandler: TerminationHandler?)
+
+		case none
+	}
+	
 	private let lock = Lock.create()
 	private let bufferPolicy: Continuation.BufferingPolicy
 
@@ -71,44 +73,6 @@ extension _Storage {
 		}
 	}
 
-	func terminate(_ terminationReason: Continuation.Termination) {
-		let action: TerminateAction = lock.withLock {
-			switch self.state {
-			case let .activeIdle(buffer):
-				switch buffer.isEmpty {
-				case true:
-					self.state = .terminated
-
-				case false:
-					self.state = .draining(buffer: buffer)
-				}
-				return .callHandler(self.onTermination.take())
-
-			case let .activeWaiting(consumers):
-				self.state = .terminated
-				return .callHandlerAndResume(self.onTermination.take(), consumers)
-
-			case .draining, .terminated:
-				return .none
-			}
-		}
-
-		switch action {
-		case .callHandlerAndResume(let terminationHandler, var consumers):
-			terminationHandler?(terminationReason)
-			consumers.removeAll { consumer in // TODO: Don't like this
-				consumer.resume(returning: .success(nil))
-				return true
-			}
-
-		case let .callHandler(terminationHandler):
-			terminationHandler?(terminationReason)
-
-		case .none:
-			break
-		}
-	}
-
 	func yield(_ value: sending Element) -> Continuation.YieldResult {
 		let (result, action): (Continuation.YieldResult, YieldAction) = lock.withLock {
 			switch self.state {
@@ -131,13 +95,16 @@ extension _Storage {
 					}
 
 				case let .bufferingNewest(limit):
-					switch buffer.count < limit {
-					case true:
+					switch limit {
+					case let limit where limit <= .zero:
+						return (.dropped(value), .none)
+
+					case let limit where buffer.count < limit:
 						buffer.append(value)
 						self.state = .activeIdle(buffer: buffer)
 						return (.enqueued(remaining: limit - buffer.count), .none)
 
-					case false:
+					default:
 						let droppedValue = buffer.removeFirst()
 						buffer.append(value)
 						self.state = .activeIdle(buffer: buffer)
@@ -157,11 +124,16 @@ extension _Storage {
 
 				switch self.bufferPolicy {
 				case .unbounded:
-					return (.enqueued(remaining: .max), .resume(consumer: consumer, element: value))
+					return (
+						.enqueued(remaining: .max),
+						.resume(consumer: consumer, element: value))
 
 				case let .bufferingOldest(limit), let .bufferingNewest(limit):
-					return (.enqueued(remaining: limit), .resume(consumer: consumer, element: value))
+					return (
+						.enqueued(remaining: limit),
+						.resume(consumer: consumer, element: value))
 				}
+
 			case .draining, .terminated:
 				return (.terminated, .none)
 			}
@@ -169,7 +141,8 @@ extension _Storage {
 
 		switch action {
 		case let .resume(consumer, element):
-			consumer.resume(returning: .success(UnsafeSendable(element).take()))
+			let element = UnsafeSendable(element).take()
+			consumer.resume(returning: .success(element))
 
 		case .none:
 			break
@@ -198,25 +171,42 @@ extension _Storage {
 				self.state = .activeWaiting(consumers: consumers)
 				return .suspend
 
-			case var .draining(buffer):
+			case .draining(var buffer, let failure):
 				switch buffer.isEmpty {
 				case true:
-					self.state = .terminated
-					return .resume(element: nil)
+					self.state = .terminated()
+					switch failure {
+					case .none:
+						return .resume(element: nil)
+
+					case let .some(failure):
+						return .throwing(failure: failure)
+					}
 
 				case false:
 					let element = buffer.removeFirst()
-					self.state = .draining(buffer: buffer)
+					self.state = .draining(buffer: buffer, failure: failure)
 					return .resume(element: element)
 				}
-			case .terminated:
-				return .resume(element: nil)
+
+			case let .terminated(failure):
+				self.state = .terminated()
+				switch failure {
+				case .none:
+					return .resume(element: nil)
+
+				case let .some(failure):
+					return .throwing(failure: failure)
+				}
 			}
 		}
 
 		switch action {
 		case let .resume(element):
 			consumer.resume(returning: .success(element))
+
+		case let .throwing(failure):
+			consumer.resume(returning: .failure(failure))
 
 		case .suspend:
 			break
@@ -231,5 +221,65 @@ extension _Storage {
 		} onCancel: {
 			self.terminate(.cancelled)
 		}.get()
+	}
+
+	func terminate(_ terminationReason: Continuation.Termination) {
+		let action: TerminateAction = lock.withLock {
+			let failure: Failure?
+
+			switch terminationReason {
+			case let .finished(withFailure):
+				failure = withFailure
+
+			case .cancelled:
+				failure = nil
+			}
+
+			switch self.state {
+			case let .activeIdle(buffer):
+				switch buffer.isEmpty {
+				case true:
+					self.state = .terminated(failure: failure)
+
+				case false:
+					self.state = .draining(buffer: buffer, failure: failure)
+				}
+				return .callHandler(
+					terminationHandler: self.onTermination.take())
+
+			case let .activeWaiting(consumers):
+				self.state = .terminated()
+				return .callHandlerAndResume(
+					terminationHandler: self.onTermination.take(),
+					consumers: consumers,
+					failure: failure)
+
+			case .draining, .terminated:
+				return .none
+			}
+		}
+
+		switch action {
+		case .callHandlerAndResume(
+			terminationHandler: let terminationHandler,
+			consumers: var consumers,
+			failure: let failure):
+			terminationHandler?(terminationReason)
+
+			if let failure {
+				let consumer = consumers.popFirst()
+				consumer?.resume(returning: .failure(failure))
+			}
+
+			while let element = consumers.popFirst() {
+				element.resume(returning: .success(nil))
+			}
+
+		case let .callHandler(terminationHandler: terminationHandler):
+			terminationHandler?(terminationReason)
+
+		case .none:
+			break
+		}
 	}
 }
