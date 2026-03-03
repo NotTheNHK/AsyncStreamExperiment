@@ -16,17 +16,9 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 
 		case activeWaiting(consumer: Consumer)
 
-		case draining(buffer: Deque<Element>)
+		case draining(buffer: Deque<Element>, failure: Failure? = nil)
 
-		case terminated
-	}
-
-	enum TerminateAction {
-		case callHandlerAndResume(TerminationHandler?, Consumer)
-
-		case callHandler(TerminationHandler?)
-
-		case none
+		case terminated(failure: Failure? = nil)
 	}
 
 	enum YieldAction {
@@ -38,9 +30,19 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	enum NextAction {
 		case resume(element: Element?)
 
+		case throwing(failure: Failure)
+
 		case suspend
 
 		case failConcurrentAccess
+	}
+
+	enum TerminateAction {
+		case callHandlerAndResume(TerminationHandler?, Consumer, failure: Failure?)
+
+		case callHandler(TerminationHandler?)
+
+		case none
 	}
 
 	private let lock = Lock.create()
@@ -74,20 +76,34 @@ extension _Storage {
 
 	func terminate(_ terminationReason: Continuation.Termination) {
 		let action: TerminateAction = lock.withLock {
+			let failure: Failure?
+
+			switch terminationReason {
+			case let .finished(withFailure):
+				failure = withFailure
+
+			case .cancelled:
+				failure = nil
+			}
+
 			switch self.state {
 			case let .activeIdle(buffer):
 				switch buffer.isEmpty {
 				case true:
-					self.state = .terminated
+					self.state = .terminated(failure: failure)
 
 				case false:
-					self.state = .draining(buffer: buffer)
+					self.state = .draining(buffer: buffer, failure: failure)
 				}
-				return .callHandler(self.onTermination.take())
+				return .callHandler(
+					self.onTermination.take())
 
 			case let .activeWaiting(consumer):
-				self.state = .terminated
-				return .callHandlerAndResume(self.onTermination.take(), consumer)
+				self.state = .terminated()
+				return .callHandlerAndResume(
+					self.onTermination.take(),
+					consumer,
+					failure: failure)
 
 			case .draining, .terminated:
 				return .none
@@ -95,11 +111,21 @@ extension _Storage {
 		}
 
 		switch action {
-		case let .callHandlerAndResume(terminationHandler, consumer):
+		case .callHandlerAndResume(
+			let terminationHandler,
+			let consumer,
+			let failure):
 			terminationHandler?(terminationReason)
-			consumer.resume(returning: .success(nil))
 
-		case let .callHandler(terminationHandler):
+			switch failure {
+			case .none:
+				consumer.resume(returning: .success(nil))
+
+			case let .some(failure):
+				consumer.resume(returning: .failure(failure))
+			}
+
+		case .callHandler(let terminationHandler):
 			terminationHandler?(terminationReason)
 
 		case .none:
@@ -129,13 +155,16 @@ extension _Storage {
 					}
 
 				case let .bufferingNewest(limit):
-					switch buffer.count < limit {
-					case true:
+					switch limit {
+					case let limit where limit <= .zero:
+						return (.dropped(value), .none)
+
+					case let limit where buffer.count < limit:
 						buffer.append(value)
 						self.state = .activeIdle(buffer: buffer)
 						return (.enqueued(remaining: limit - buffer.count), .none)
 
-					case false:
+					default:
 						let droppedValue = buffer.removeFirst()
 						buffer.append(value)
 						self.state = .activeIdle(buffer: buffer)
@@ -187,26 +216,41 @@ extension _Storage {
 			case .activeWaiting:
 				return .failConcurrentAccess
 
-			case var .draining(buffer):
+			case .draining(var buffer, let failure):
 				switch buffer.isEmpty {
 				case true:
-					self.state = .terminated
-					return .resume(element: nil)
+					self.state = .terminated()
+					switch failure {
+					case .none:
+						return .resume(element: nil)
+
+					case let .some(failure):
+						return .throwing(failure: failure)
+					}
 
 				case false:
 					let element = buffer.removeFirst()
-					self.state = .draining(buffer: buffer)
+					self.state = .draining(buffer: buffer, failure: failure)
 					return .resume(element: element)
 				}
 
-			case .terminated:
-				return .resume(element: nil)
+			case let .terminated(failure):
+				switch failure {
+				case .none:
+					return .resume(element: nil)
+
+				case let .some(failure):
+					return .throwing(failure: failure)
+				}
 			}
 		}
 
 		switch action {
 		case let .resume(element):
 			consumer.resume(returning: .success(element))
+
+		case let .throwing(failure):
+			consumer.resume(returning: .failure(failure))
 
 		case .suspend:
 			break

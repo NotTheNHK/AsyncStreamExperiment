@@ -300,4 +300,62 @@ struct AsyncThrowingStreamV2Tests {
 			Issue.record("unexpected error")
 		}
 	}
+
+	@Test("buffering zero capacity drops all")
+	func bufferingZeroCapacityDropsAll() async throws {
+		// bufferingOldest(0): every yield dropped immediately
+		let (oldestStream, oldestCont) = AsyncThrowingStreamV2<Int, Error>.makeStream(
+			bufferingPolicy: .bufferingOldest(0)
+		)
+		if case .dropped(let v) = oldestCont.yield(1) { #expect(v == 1) }
+		else { Issue.record("expected .dropped(1) for bufferingOldest(0)") }
+		if case .dropped(let v) = oldestCont.yield(2) { #expect(v == 2) }
+		else { Issue.record("expected .dropped(2) for bufferingOldest(0)") }
+		oldestCont.finish()
+		let oldestIt = oldestStream.makeAsyncIterator()
+		#expect(try await oldestIt.next(isolation: #isolation) == nil)
+
+		// bufferingNewest(0): every yield dropped immediately
+		let (newestStream, newestCont) = AsyncThrowingStreamV2.makeStream(
+			of: Int.self,
+			throwing: Error.self,
+			bufferingPolicy: .bufferingNewest(0)
+		)
+		if case .dropped(let v) = newestCont.yield(3) { #expect(v == 3) }
+		else { Issue.record("expected .dropped(3) for bufferingNewest(0)") }
+		if case .dropped(let v) = newestCont.yield(4) { #expect(v == 4) }
+		else { Issue.record("expected .dropped(4) for bufferingNewest(0)") }
+		newestCont.finish()
+		let newestIt = newestStream.makeAsyncIterator()
+		#expect(try await newestIt.next(isolation: #isolation) == nil)
+	}
+
+	@Test("buffering negative capacity drops all")
+	func bufferingNegativeCapacityDropsAll() async throws {
+		// bufferingOldest(-1): every yield dropped immediately
+		let (oldestStream, oldestCont) = AsyncThrowingStreamV2<Int, Error>.makeStream(
+			bufferingPolicy: .bufferingOldest(-1)
+		)
+		if case .dropped(let v) = oldestCont.yield(1) { #expect(v == 1) }
+		else { Issue.record("expected .dropped(1) for bufferingOldest(0)") }
+		if case .dropped(let v) = oldestCont.yield(2) { #expect(v == 2) }
+		else { Issue.record("expected .dropped(2) for bufferingOldest(0)") }
+		oldestCont.finish()
+		let oldestIt = oldestStream.makeAsyncIterator()
+		#expect(try await oldestIt.next(isolation: #isolation) == nil)
+
+		// bufferingNewest(-1): every yield dropped immediately
+		let (newestStream, newestCont) = AsyncThrowingStreamV2.makeStream(
+			of: Int.self,
+			throwing: Error.self,
+			bufferingPolicy: .bufferingNewest(-1)
+		)
+		if case .dropped(let v) = newestCont.yield(3) { #expect(v == 3) }
+		else { Issue.record("expected .dropped(3) for bufferingNewest(0)") }
+		if case .dropped(let v) = newestCont.yield(4) { #expect(v == 4) }
+		else { Issue.record("expected .dropped(4) for bufferingNewest(0)") }
+		newestCont.finish()
+		let newestIt = newestStream.makeAsyncIterator()
+		#expect(try await newestIt.next(isolation: #isolation) == nil)
+	}
 }
