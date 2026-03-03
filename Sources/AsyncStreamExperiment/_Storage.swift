@@ -43,19 +43,19 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 
 		case none
 	}
-	
+
 	private let lock = Lock.create()
 	private let bufferPolicy: Continuation.BufferingPolicy
 
 	private var state = State.activeIdle(buffer: Deque())
-	private var onTermination: TerminationHandler?
+	var onTermination: TerminationHandler?
 
 	init(bufferPolicy: Continuation.BufferingPolicy) {
 		self.bufferPolicy = bufferPolicy
 	}
 
 	deinit {
-		self.onTermination?(.cancelled)
+		self.terminate(.cancelled)
 		Lock.destroy(self.lock)
 	}
 }
@@ -69,7 +69,12 @@ extension _Storage {
 
 	func setOnTermination(_ newValue: TerminationHandler?) {
 		lock.withLock {
-			self.onTermination = newValue
+			switch self.state {
+			case .activeIdle, .activeWaiting:
+				self.onTermination = newValue
+			default:
+				return
+			}
 		}
 	}
 
@@ -214,7 +219,7 @@ extension _Storage {
 	}
 
 	func next() async throws(Failure) -> Element? {
-		try await withTaskCancellationHandler {
+		return try await withTaskCancellationHandler {
 			await withUnsafeContinuation { consumer in
 				self.next(consumer)
 			}

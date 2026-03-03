@@ -35,16 +35,24 @@ extension AsyncStreamV2.Continuation {
 	func convertToAsyncStreamOnTermination(
 		_ onTermination: (@Sendable (_Storage<Element, Never>.Continuation.Termination) -> Void)?)
 	-> (@Sendable (Termination) -> Void)? {
-		{ @Sendable termination in
-			onTermination?(termination.convertToContinuationTermination())
+		guard
+			let onTermination
+		else { return nil }
+
+		return { @Sendable termination in
+			onTermination(termination.convertToContinuationTermination())
 		}
 	}
 
 	func convertToContinuationOnTermination(
 		_ onTermination: (@Sendable (Termination) -> Void)?)
 	-> (@Sendable (_Storage<Element, Never>.Continuation.Termination) -> Void)? {
-		{ @Sendable termination in
-			onTermination?(termination.convertToAsyncStreamTermination())
+		guard
+			let onTermination
+		else { return nil }
+
+		return { @Sendable termination in
+			onTermination(termination.convertToAsyncStreamTermination())
 		}
 	}
 }

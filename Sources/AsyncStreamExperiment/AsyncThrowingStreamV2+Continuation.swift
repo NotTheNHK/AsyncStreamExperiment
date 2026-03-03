@@ -37,9 +37,18 @@ extension AsyncThrowingStreamV2 {
 			self._storage = _storage
 		}
 
+		public var onTermination: (@Sendable (Termination) -> Void)? {
+			get {
+				return convertToAsyncThrowingStreamOnTermination(self._storage.getOnTermination())
+			}
+			nonmutating set {
+				self._storage.setOnTermination(convertToContinuationOnTermination(newValue))
+			}
+		}
+
 		@discardableResult
-		public func yield() -> YieldResult where Element == Void {
-			self._storage.yield(Void()).convertToAsyncThrowingStreamYieldResult()
+		public func yield(_ value: sending Element) -> YieldResult {
+			self._storage.yield(value).convertToAsyncThrowingStreamYieldResult()
 		}
 
 		@discardableResult
@@ -55,21 +64,12 @@ extension AsyncThrowingStreamV2 {
 		}
 
 		@discardableResult
-		public func yield(_ value: sending Element) -> YieldResult {
-			self._storage.yield(value).convertToAsyncThrowingStreamYieldResult()
+		public func yield() -> YieldResult where Element == Void {
+			self._storage.yield(Void()).convertToAsyncThrowingStreamYieldResult()
 		}
 
 		public func finish(throwing error: Failure? = nil) {
 			self._storage.terminate(.finished(error))
-		}
-
-		public var onTermination: (@Sendable (Termination) -> Void)? {
-			get {
-				return convertToAsyncThrowingStreamOnTermination(self._storage.getOnTermination())
-			}
-			nonmutating set {
-				self._storage.setOnTermination(convertToContinuationOnTermination(newValue))
-			}
 		}
 	}
 }
