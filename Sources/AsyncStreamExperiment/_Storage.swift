@@ -48,7 +48,7 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	private let bufferPolicy: Continuation.BufferingPolicy
 
 	private var state = State.activeIdle(buffer: Deque())
-	var onTermination: TerminationHandler?
+	private var onTermination: TerminationHandler?
 
 	init(bufferPolicy: Continuation.BufferingPolicy) {
 		self.bufferPolicy = bufferPolicy
