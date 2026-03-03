@@ -38,9 +38,9 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	enum TerminateAction {
-		case callHandlerAndResume(TerminationHandler?, Consumer, failure: Failure?)
+		case callHandlerAndResume(terminationHandler: TerminationHandler?, consumer: Consumer, failure: Failure?)
 
-		case callHandler(TerminationHandler?)
+		case callHandler(terminationHandler: TerminationHandler?)
 
 		case none
 	}
@@ -56,7 +56,7 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	deinit {
-		self.onTermination?(.cancelled)
+		self.terminate(.cancelled)
 		Lock.destroy(self.lock)
 	}
 }
@@ -70,66 +70,12 @@ extension _Storage {
 
 	func setOnTermination(_ newValue: TerminationHandler?) {
 		lock.withLock {
-			self.onTermination = newValue
-		}
-	}
-
-	func terminate(_ terminationReason: Continuation.Termination) {
-		let action: TerminateAction = lock.withLock {
-			let failure: Failure?
-
-			switch terminationReason {
-			case let .finished(withFailure):
-				failure = withFailure
-
-			case .cancelled:
-				failure = nil
-			}
-
 			switch self.state {
-			case let .activeIdle(buffer):
-				switch buffer.isEmpty {
-				case true:
-					self.state = .terminated(failure: failure)
-
-				case false:
-					self.state = .draining(buffer: buffer, failure: failure)
-				}
-				return .callHandler(
-					self.onTermination.take())
-
-			case let .activeWaiting(consumer):
-				self.state = .terminated()
-				return .callHandlerAndResume(
-					self.onTermination.take(),
-					consumer,
-					failure: failure)
-
-			case .draining, .terminated:
-				return .none
+			case .activeIdle, .activeWaiting:
+				self.onTermination = newValue
+			default:
+				return
 			}
-		}
-
-		switch action {
-		case .callHandlerAndResume(
-			let terminationHandler,
-			let consumer,
-			let failure):
-			terminationHandler?(terminationReason)
-
-			switch failure {
-			case .none:
-				consumer.resume(returning: .success(nil))
-
-			case let .some(failure):
-				consumer.resume(returning: .failure(failure))
-			}
-
-		case .callHandler(let terminationHandler):
-			terminationHandler?(terminationReason)
-
-		case .none:
-			break
 		}
 	}
 
@@ -189,7 +135,8 @@ extension _Storage {
 
 		switch action {
 		case let .resume(consumer, element):
-			consumer.resume(returning: .success(UnsafeSendable(element).take()))
+			let element = UnsafeSendable(element).take()
+			consumer.resume(returning: .success(element))
 
 		case .none:
 			break
@@ -257,6 +204,65 @@ extension _Storage {
 
 		case .failConcurrentAccess:
 			fatalError("Concurrent iteration detected")
+		}
+	}
+
+	func terminate(_ terminationReason: Continuation.Termination) {
+		let action: TerminateAction = lock.withLock {
+			let failure: Failure?
+
+			switch terminationReason {
+			case let .finished(withFailure):
+				failure = withFailure
+
+			case .cancelled:
+				failure = nil
+			}
+
+			switch self.state {
+			case let .activeIdle(buffer):
+				switch buffer.isEmpty {
+				case true:
+					self.state = .terminated(failure: failure)
+
+				case false:
+					self.state = .draining(buffer: buffer, failure: failure)
+				}
+				return .callHandler(
+					terminationHandler: self.onTermination.take())
+
+			case let .activeWaiting(consumer):
+				self.state = .terminated()
+				return .callHandlerAndResume(
+					terminationHandler: self.onTermination.take(),
+					consumer: consumer,
+					failure: failure)
+
+			case .draining, .terminated:
+				return .none
+			}
+		}
+
+		switch action {
+		case .callHandlerAndResume(
+			let terminationHandler,
+			let consumer,
+			let failure):
+			terminationHandler?(terminationReason)
+
+			switch failure {
+			case .none:
+				consumer.resume(returning: .success(nil))
+
+			case let .some(failure):
+				consumer.resume(returning: .failure(failure))
+			}
+
+		case .callHandler(let terminationHandler):
+			terminationHandler?(terminationReason)
+
+		case .none:
+			break
 		}
 	}
 

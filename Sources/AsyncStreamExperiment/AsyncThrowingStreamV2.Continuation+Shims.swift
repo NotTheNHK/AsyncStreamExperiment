@@ -35,16 +35,24 @@ extension AsyncThrowingStreamV2.Continuation {
 	func convertToAsyncThrowingStreamOnTermination(
 		_ onTermination: (@Sendable (_Storage<Element, Failure>.Continuation.Termination) -> Void)?)
 	-> (@Sendable (Termination) -> Void)? {
-		{ @Sendable termination in
-			onTermination?(termination.convertToContinuationTermination())
+		guard
+			let onTermination
+		else { return nil }
+
+		return { @Sendable termination in
+			onTermination(termination.convertToContinuationTermination())
 		}
 	}
 
 	func convertToContinuationOnTermination(
 		_ onTermination: (@Sendable (Termination) -> Void)?)
 	-> (@Sendable (_Storage<Element, Failure>.Continuation.Termination) -> Void)? {
-		{ @Sendable termination in
-			onTermination?(termination.convertToAsyncThrowingStreamTermination())
+		guard
+			let onTermination
+		else { return nil }
+
+		return { @Sendable termination in
+			onTermination(termination.convertToAsyncThrowingStreamTermination())
 		}
 	}
 }
