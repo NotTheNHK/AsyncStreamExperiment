@@ -284,9 +284,9 @@ struct AsyncStreamV2Tests {
 
 		let r1 = continuation.yield("a")
 		let r2 = continuation.yield("b")
-		let r3 = continuation.yield("c") // buffer now full
-		let r4 = continuation.yield("d") // should be dropped
-		let r5 = continuation.yield("e") // should be dropped
+		let r3 = continuation.yield("c")
+		let r4 = continuation.yield("d")
+		let r5 = continuation.yield("e")
 		continuation.finish()
 
 		if case .enqueued(let remaining) = r1 { #expect(remaining == 2) }
@@ -316,8 +316,8 @@ struct AsyncStreamV2Tests {
 		let r1 = continuation.yield("a")
 		let r2 = continuation.yield("b")
 		let r3 = continuation.yield("c")
-		let r4 = continuation.yield("d") // full: evicts oldest "a"
-		let r5 = continuation.yield("e") // full: evicts oldest "b"
+		let r4 = continuation.yield("d")
+		let r5 = continuation.yield("e")
 		continuation.finish()
 
 		if case .enqueued(let remaining) = r1 { #expect(remaining == 2) }
@@ -326,7 +326,7 @@ struct AsyncStreamV2Tests {
 		else { Issue.record("expected .enqueued(1) for r2") }
 		if case .enqueued(let remaining) = r3 { #expect(remaining == 0) }
 		else { Issue.record("expected .enqueued(0) for r3") }
-		// The dropped value is the evicted oldest, not the incoming element
+
 		if case .dropped(let value) = r4 { #expect(value == "a") }
 		else { Issue.record("expected .dropped(a) for r4") }
 		if case .dropped(let value) = r5 { #expect(value == "b") }
@@ -490,7 +490,6 @@ struct AsyncStreamV2Tests {
 				Issue.record("unexpected termination reason")
 			}
 
-			// Yielding or re-entrantly terminating the stream should be ignored
 			switch continuation.yield(with: .success("terminated")) {
 			case .terminated:
 				break;
@@ -498,7 +497,6 @@ struct AsyncStreamV2Tests {
 				Issue.record("unexpected yield result")
 			}
 
-			// Should not re-trigger the callback
 			continuation.finish()
 		}
 

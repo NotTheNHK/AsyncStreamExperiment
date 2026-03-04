@@ -52,8 +52,8 @@ extension AsyncStreamV2 {
 
 	public static func makeStream(
 		of elementType: Element.Type = Element.self,
-		bufferingPolicy: AsyncStreamV2<Element>.Continuation.BufferingPolicy = .unbounded)
-	-> (stream: AsyncStreamV2<Element>, continuation: AsyncStreamV2<Element>.Continuation) {
+		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
+	-> (stream: AsyncStreamV2<Element>, continuation: Continuation) {
 		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 		let continuation = AsyncStreamV2.Continuation(_storage: _storage)

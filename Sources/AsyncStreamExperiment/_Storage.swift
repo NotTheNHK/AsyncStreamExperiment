@@ -86,38 +86,50 @@ extension _Storage {
 				case .unbounded:
 					buffer.append(value)
 					self.state = .activeIdle(buffer: buffer)
-					return (.enqueued(remaining: .max), .none)
+					return (
+						.enqueued(remaining: .max),
+						.none)
 
 				case let .bufferingOldest(limit):
 					switch buffer.count < limit {
 					case true:
 						buffer.append(value)
 						self.state = .activeIdle(buffer: buffer)
-						return (.enqueued(remaining: limit - buffer.count), .none)
+						return (
+							.enqueued(remaining: limit - buffer.count),
+							.none)
 
 					case false:
-						return (.dropped(value), .none)
+						return (
+							.dropped(value),
+							.none)
 					}
 
 				case let .bufferingNewest(limit):
 					switch limit {
 					case let limit where limit <= .zero:
-						return (.dropped(value), .none)
+						return (
+							.dropped(value),
+							.none)
 
 					case let limit where buffer.count < limit:
 						buffer.append(value)
 						self.state = .activeIdle(buffer: buffer)
-						return (.enqueued(remaining: limit - buffer.count), .none)
+						return (
+							.enqueued(remaining: limit - buffer.count),
+							.none)
 
 					default:
 						let droppedValue = buffer.removeFirst()
 						buffer.append(value)
 						self.state = .activeIdle(buffer: buffer)
-						return (.dropped(droppedValue), .none)
+						return (
+							.dropped(droppedValue),
+							.none)
 					}
 				}
 
-			case var .activeWaiting(consumers): // TODO: Needs further refinement
+			case var .activeWaiting(consumers):
 				let consumer = consumers.removeFirst()
 
 				switch consumers.isEmpty {
@@ -140,7 +152,9 @@ extension _Storage {
 				}
 
 			case .draining, .terminated:
-				return (.terminated, .none)
+				return (
+					.terminated,
+					.none)
 			}
 		}
 
@@ -148,12 +162,11 @@ extension _Storage {
 		case let .resume(consumer, element):
 			let element = UnsafeSendable(element).take()
 			consumer.resume(returning: .success(element))
+			return result
 
 		case .none:
-			break
+			return result
 		}
-
-		return result
 	}
 
 	func next(_ consumer: Consumer) {

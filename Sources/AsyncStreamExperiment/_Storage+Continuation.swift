@@ -9,7 +9,7 @@ import Foundation
 
 extension _Storage {
 	struct Continuation {
-		enum BufferingPolicy: Sendable {
+		enum BufferingPolicy {
 			case unbounded
 
 			case bufferingOldest(Int)
@@ -25,7 +25,7 @@ extension _Storage {
 			case terminated
 		}
 
-		enum Termination: Sendable {
+		enum Termination {
 			case finished(Failure?)
 
 			case cancelled

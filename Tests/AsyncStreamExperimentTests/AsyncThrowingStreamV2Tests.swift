@@ -17,8 +17,8 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("throwing continuation equality")
 	func throwingContinuationEquality() async throws {
-		let (_, continuation1) = AsyncThrowingStream<Int, Error>.makeStream()
-		let (_, continuation2) = AsyncThrowingStream<Int, Error>.makeStream()
+		let (_, continuation1) = AsyncThrowingStreamV2<Int, Error>.makeStream()
+		let (_, continuation2) = AsyncThrowingStreamV2<Int, Error>.makeStream()
 
 		#expect(continuation1 == continuation1)
 		#expect(continuation1 != continuation2)
@@ -394,7 +394,6 @@ struct AsyncThrowingStreamV2Tests {
 				Issue.record("unexpected yield result")
 			}
 
-			// Should not re-trigger the callback
 			continuation.finish()
 		}
 
@@ -529,13 +528,11 @@ struct AsyncThrowingStreamV2Tests {
 		_ = try await consumer2.value
 	}
 
-	@Test("error delivered to all waiting consumers throwing")
+	@Test("error delivered to all waiting consumers throwing") // TODO?: I think only the first consumer should receive the error,
 	func errorDeliveredToAllWaitingConsumersThrowing() async throws {
-		let thrownError = SomeError()
-
-		let (stream, continuation) = AsyncThrowingStream<Int, Error>.makeStream()
-		let (controlStream, controlContinuation) = AsyncStream<Int>.makeStream()
-		var controlIterator = controlStream.makeAsyncIterator()
+		let (stream, continuation) = AsyncThrowingStreamV2<Int, SomeError>.makeStream()
+		let (controlStream, controlContinuation) = AsyncStreamV2<Int>.makeStream()
+		let controlIterator = controlStream.makeAsyncIterator()
 
 		func makeConsumingTask(_ index: Int) -> Task<Void, Never> {
 			Task { @MainActor in
@@ -554,7 +551,7 @@ struct AsyncThrowingStreamV2Tests {
 
 		await MainActor.run {}
 
-		continuation.finish(throwing: thrownError)
+		continuation.finish(throwing: SomeError())
 
 		_ = await consumer1.value
 		//_ = await consumer2.value
@@ -586,7 +583,6 @@ struct AsyncThrowingStreamV2Tests {
 		}
 		#expect(try await controlIterator.next(isolation: #isolation) == 2)
 
-		// Ensure both consumers are suspended in next()
 		await MainActor.run {}
 
 		continuation.yield(10)
@@ -598,7 +594,6 @@ struct AsyncThrowingStreamV2Tests {
 		_ = try await consumer1.value
 		_ = try await consumer2.value
 
-		// Each element should be delivered to exactly one consumer — none lost or duplicated
 		#expect(collector.received.sorted() == [10, 20, 30, 40])
 	}
 
@@ -622,8 +617,6 @@ struct AsyncThrowingStreamV2Tests {
 
 		await MainActor.run {}
 
-		// Cancelling consumer1 triggers storage.cancel(), terminating the stream
-		// and resuming all waiting continuations — including consumer2's
 		consumer1.cancel()
 
 		_ = try await consumer1.value
@@ -648,7 +641,7 @@ struct AsyncThrowingStreamV2Tests {
 		oldestCont.finish()
 
 		do {
-			var oldestIt = oldestStream.makeAsyncIterator()
+			let oldestIt = oldestStream.makeAsyncIterator()
 			#expect(try await oldestIt.next(isolation: #isolation) == "a")
 			#expect(try await oldestIt.next(isolation: #isolation) == "b")
 			#expect(try await oldestIt.next(isolation: #isolation) == nil)
@@ -670,7 +663,7 @@ struct AsyncThrowingStreamV2Tests {
 		newestCont.finish()
 
 		do {
-			var newestIt = newestStream.makeAsyncIterator()
+			let newestIt = newestStream.makeAsyncIterator()
 			#expect(try await newestIt.next(isolation: #isolation) == "y")
 			#expect(try await newestIt.next(isolation: #isolation) == "z")
 			#expect(try await newestIt.next(isolation: #isolation) == nil)

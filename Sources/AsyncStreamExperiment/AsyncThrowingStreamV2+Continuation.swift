@@ -75,13 +75,21 @@ extension AsyncThrowingStreamV2 {
 }
 
 extension AsyncThrowingStreamV2.Continuation: Hashable {
-	public func hash(into hasher: inout Hasher) {
+	public func hash(
+		into hasher: inout Hasher) {
 		return hasher.combine(ObjectIdentifier(self._storage))
 	}
 
-	public static func == (lsh: AsyncThrowingStreamV2.Continuation, rhs: AsyncThrowingStreamV2.Continuation) -> Bool {
+	public static func == (
+		lsh: AsyncThrowingStreamV2.Continuation,
+		rhs: AsyncThrowingStreamV2.Continuation)
+	-> Bool {
 		return lsh._storage === rhs._storage
 	}
 }
 
 extension AsyncThrowingStreamV2.Continuation.YieldResult: Sendable where Element: Sendable {}
+
+extension AsyncThrowingStreamV2.Continuation.Termination: Equatable where Failure: Hashable {}
+
+extension AsyncThrowingStreamV2.Continuation.Termination: Hashable where Failure: Hashable {}

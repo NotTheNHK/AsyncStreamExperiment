@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct AsyncThrowingStreamV2<Element, Failure> where Failure : Error {
+public struct AsyncThrowingStreamV2<Element, Failure> where Failure: Error {
 	private let _storage: _Storage<Element, Failure>
 
 	init(_storage: _Storage<Element, Failure>) {
@@ -42,8 +42,8 @@ extension AsyncThrowingStreamV2 {
 	init(
 		_ elementType: Element.Type = Element.self,
 		_ failureType: Failure.Type = Failure.self,
-		bufferingPolicy: AsyncThrowingStreamV2<Element, Failure>.Continuation.BufferingPolicy = .unbounded,
-		_ build: (AsyncThrowingStreamV2<Element, Failure>.Continuation) -> Void) {
+		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
+		_ build: (Continuation) -> Void) {
 			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 			self._storage = _storage
@@ -54,8 +54,8 @@ extension AsyncThrowingStreamV2 {
 	static func makeStream(
 		of elementType: Element.Type = Element.self,
 		throwing failureType: Failure.Type = Failure.self,
-		bufferingPolicy: AsyncThrowingStreamV2<Element, Failure>.Continuation.BufferingPolicy = .unbounded)
-	-> (stream: AsyncThrowingStreamV2<Element, Failure>, continuation: AsyncThrowingStreamV2<Element, Failure>.Continuation) {
+		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
+	-> (stream: AsyncThrowingStreamV2<Element, Failure>, continuation: Continuation) {
 		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
