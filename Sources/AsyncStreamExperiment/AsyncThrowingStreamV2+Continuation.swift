@@ -92,6 +92,10 @@ extension AsyncThrowingStreamV2.Continuation: Hashable {
 
 extension AsyncThrowingStreamV2.Continuation.YieldResult: Sendable where Element: Sendable {}
 
+extension AsyncThrowingStreamV2.Continuation.YieldResult: Equatable where Element: Equatable {}
+
+extension AsyncThrowingStreamV2.Continuation.YieldResult: Hashable where Element: Hashable {}
+
 extension AsyncThrowingStreamV2.Continuation.Termination: Equatable where Failure: Hashable {}
 
 extension AsyncThrowingStreamV2.Continuation.Termination: Hashable where Failure: Hashable {}

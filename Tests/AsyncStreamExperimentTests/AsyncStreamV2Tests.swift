@@ -277,124 +277,101 @@ struct AsyncStreamV2Tests {
 
 	// MARK: - Buffering Policies
 
-	@Test("bufferingOldest semantics")
-	func bufferingOldestSemantics() async throws {
-		let (stream, continuation) = AsyncStreamV2<String>.makeStream(
-			bufferingPolicy: .bufferingOldest(3))
-
-		let r1 = continuation.yield("a")
-		let r2 = continuation.yield("b")
-		let r3 = continuation.yield("c")
-		let r4 = continuation.yield("d")
-		let r5 = continuation.yield("e")
-		continuation.finish()
-
-		if case .enqueued(let remaining) = r1 { #expect(remaining == 2) }
-		else { Issue.record("expected .enqueued(2) for r1") }
-		if case .enqueued(let remaining) = r2 { #expect(remaining == 1) }
-		else { Issue.record("expected .enqueued(1) for r2") }
-		if case .enqueued(let remaining) = r3 { #expect(remaining == 0) }
-		else { Issue.record("expected .enqueued(0) for r3") }
-		if case .dropped(let value) = r4 { #expect(value == "d") }
-		else { Issue.record("expected .dropped(d) for r4") }
-		if case .dropped(let value) = r5 { #expect(value == "e") }
-		else { Issue.record("expected .dropped(e) for r5") }
-
-		let iterator = stream.makeAsyncIterator()
-		#expect(await iterator.next(isolation: #isolation) == "a")
-		#expect(await iterator.next(isolation: #isolation) == "b")
-		#expect(await iterator.next(isolation: #isolation) == "c")
-		#expect(await iterator.next(isolation: #isolation) == nil)
-	}
-
-	@Test("bufferingNewest semantics")
-	func bufferingNewestSemantics() async throws {
+	@Test("buffering first two, third dropped. Policy: .bufferingOldest")
+	func bufferingFirstTwoThirdDroppedPolicyBufferingOldest() async throws {
 		let (stream, continuation) = AsyncStreamV2.makeStream(
-			of: String.self,
-			bufferingPolicy: .bufferingNewest(3))
+			of: Int.self,
+			bufferingPolicy: .bufferingOldest(2))
 
-		let r1 = continuation.yield("a")
-		let r2 = continuation.yield("b")
-		let r3 = continuation.yield("c")
-		let r4 = continuation.yield("d")
-		let r5 = continuation.yield("e")
+		#expect(continuation.yield(1) == .enqueued(remaining: 1))
+		#expect(continuation.yield(2) == .enqueued(remaining: 0))
+		#expect(continuation.yield(3) == .dropped(3))
+
 		continuation.finish()
-
-		if case .enqueued(let remaining) = r1 { #expect(remaining == 2) }
-		else { Issue.record("expected .enqueued(2) for r1") }
-		if case .enqueued(let remaining) = r2 { #expect(remaining == 1) }
-		else { Issue.record("expected .enqueued(1) for r2") }
-		if case .enqueued(let remaining) = r3 { #expect(remaining == 0) }
-		else { Issue.record("expected .enqueued(0) for r3") }
-
-		if case .dropped(let value) = r4 { #expect(value == "a") }
-		else { Issue.record("expected .dropped(a) for r4") }
-		if case .dropped(let value) = r5 { #expect(value == "b") }
-		else { Issue.record("expected .dropped(b) for r5") }
-
 		let iterator = stream.makeAsyncIterator()
-		#expect(await iterator.next(isolation: #isolation) == "c")
-		#expect(await iterator.next(isolation: #isolation) == "d")
-		#expect(await iterator.next(isolation: #isolation) == "e")
+
+		#expect(await iterator.next(isolation: #isolation) == 1)
+		#expect(await iterator.next(isolation: #isolation) == 2)
 		#expect(await iterator.next(isolation: #isolation) == nil)
 	}
 
-	@Test("buffering zero capacity drops all")
-	func bufferingZeroCapacityDropsAll() async {
-		// bufferingOldest(0): every yield dropped immediately
-		let (oldestStream, oldestCont) = AsyncStreamV2<Int>.makeStream(
-			bufferingPolicy: .bufferingOldest(0)
-		)
-		if case .dropped(let v) = oldestCont.yield(1) { #expect(v == 1) }
-		else { Issue.record("expected .dropped(1) for bufferingOldest(0)") }
-		if case .dropped(let v) = oldestCont.yield(2) { #expect(v == 2) }
-		else { Issue.record("expected .dropped(2) for bufferingOldest(0)") }
-		oldestCont.finish()
-		let oldestIt = oldestStream.makeAsyncIterator()
-
-		#expect(await oldestIt.next(isolation: #isolation) == nil)
-
-		// bufferingNewest(0): every yield dropped immediately
-		let (newestStream, newestCont) = AsyncStreamV2.makeStream(
+	@Test("buffering first two, third dropped. Policy: .bufferingNewest")
+	func bufferingFirstTwoThirdDroppedPolicyBufferingNewest() async throws {
+		let (stream, continuation) = AsyncStreamV2.makeStream(
 			of: Int.self,
-			bufferingPolicy: .bufferingNewest(0)
-		)
-		if case .dropped(let v) = newestCont.yield(3) { #expect(v == 3) }
-		else { Issue.record("expected .dropped(3) for bufferingNewest(0)") }
-		if case .dropped(let v) = newestCont.yield(4) { #expect(v == 4) }
-		else { Issue.record("expected .dropped(4) for bufferingNewest(0)") }
-		newestCont.finish()
-		let newestIt = newestStream.makeAsyncIterator()
-		#expect(await newestIt.next(isolation: #isolation) == nil)
+			bufferingPolicy: .bufferingNewest(2))
+
+		#expect(continuation.yield(1) == .enqueued(remaining: 1))
+		#expect(continuation.yield(2) == .enqueued(remaining: 0))
+		#expect(continuation.yield(3) == .dropped(1))
+
+		continuation.finish()
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == 2)
+		#expect(await iterator.next(isolation: #isolation) == 3)
+		#expect(await iterator.next(isolation: #isolation) == nil)
 	}
 
-	@Test("buffering negative capacity drops all")
-	func bufferingNegativeCapacityDropsAll() async throws {
-		let (oldestStream, oldestCont) = AsyncStreamV2<Int>.makeStream(
-			bufferingPolicy: .bufferingOldest(-1)
-		)
-		if case .dropped(let v) = oldestCont.yield(1) { #expect(v == 1) }
-		else { Issue.record("expected .dropped(1) for bufferingOldest(0)") }
-		if case .dropped(let v) = oldestCont.yield(2) { #expect(v == 2) }
-		else { Issue.record("expected .dropped(2) for bufferingOldest(0)") }
-		oldestCont.finish()
-		let oldestIt = oldestStream.makeAsyncIterator()
-		#expect(await oldestIt.next(isolation: #isolation) == nil)
-
-		// bufferingNewest(-1): every yield dropped immediately
-		let (newestStream, newestCont) = AsyncStreamV2.makeStream(
+	@Test("buffering zero capacity drops all. Policy: .bufferingOldest")
+	func bufferingZeroCapacityDropsAllPolicyBufferingOldest() async throws {
+		let (stream, continuation) = AsyncStreamV2.makeStream(
 			of: Int.self,
-			bufferingPolicy: .bufferingNewest(-1)
-		)
-		if case .dropped(let v) = newestCont.yield(3) { #expect(v == 3) }
-		else { Issue.record("expected .dropped(3) for bufferingNewest(0)") }
-		if case .dropped(let v) = newestCont.yield(4) { #expect(v == 4) }
-		else { Issue.record("expected .dropped(4) for bufferingNewest(0)") }
-		newestCont.finish()
-		let newestIt = newestStream.makeAsyncIterator()
-		#expect(await newestIt.next(isolation: #isolation) == nil)
+			bufferingPolicy: .bufferingOldest(0))
+
+		#expect(continuation.yield(1) == .dropped(1))
+		#expect(continuation.yield(2) == .dropped(2))
+
+		continuation.finish()
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == nil)
 	}
 
+	@Test("buffering zero capacity drops all. Policy: .bufferingNewest")
+	func bufferingZeroCapacityDropsAllPolicyBufferingNewest() async throws {
+		let (stream, continuation) = AsyncStreamV2.makeStream(
+			of: Int.self,
+			bufferingPolicy: .bufferingNewest(0))
+
+		#expect(continuation.yield(1) == .dropped(1))
+		#expect(continuation.yield(2) == .dropped(2))
+
+		continuation.finish()
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("buffering negative capacity drops all. Policy: .bufferingOldest")
+	func bufferingNegativeCapacityDropsAllPolicybufferingOldest() async throws {
+		let (stream, continuation) = AsyncStreamV2.makeStream(
+			of: Int.self,
+			bufferingPolicy: .bufferingOldest(-1))
+
+		#expect(continuation.yield(1) == .dropped(1))
+		#expect(continuation.yield(2) == .dropped(2))
+
+		continuation.finish()
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("buffering negative capacity drops all. Policy: .bufferingNewest")
+	func bufferingNegativeCapacityDropsAllBufferingNewestPolicy() async throws {
+		let (stream, continuation) = AsyncStreamV2.makeStream(
+			of: Int.self,
+			bufferingPolicy: .bufferingNewest(-1))
+
+		#expect(continuation.yield(1) == .dropped(1))
+		#expect(continuation.yield(2) == .dropped(2))
+
+		continuation.finish()
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == nil)
+	}
 
 	// MARK: - Finish & Idempotence
 

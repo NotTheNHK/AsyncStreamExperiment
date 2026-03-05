@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct AsyncThrowingStreamV2<Element, Failure> where Failure: Error {
+public struct AsyncThrowingStreamV2<Element, Failure: Error> {
 	private let _storage: _Storage<Element, Failure>
 
 	init(_storage: _Storage<Element, Failure>) {

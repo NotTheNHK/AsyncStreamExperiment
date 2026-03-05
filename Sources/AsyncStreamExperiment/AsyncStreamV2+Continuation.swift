@@ -88,4 +88,8 @@ extension AsyncStreamV2.Continuation: Hashable {
 
 extension AsyncStreamV2.Continuation.YieldResult: Sendable where Element: Sendable {}
 
+extension AsyncStreamV2.Continuation.YieldResult: Equatable where Element: Equatable {}
+
+extension AsyncStreamV2.Continuation.YieldResult: Hashable where Element: Hashable {}
+
 extension AsyncStreamV2.Continuation.Termination: Hashable where Element: Hashable {}
