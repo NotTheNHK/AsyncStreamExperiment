@@ -1,12 +1,6 @@
 import Testing
 @testable import AsyncStreamExperiment
 
-func f() async throws(SomeError) {
-	try await withUnsafeContinuation { (continuation: UnsafeContinuation<Result<Void, SomeError>, Never>) in
-		continuation.resume(returning: .failure(SomeError()))
-	}.get()
-}
-
 struct AsyncThrowingStreamV2Tests {
 	@Test("throwing factory method")
 	func throwingFactoryMethod() async throws {
