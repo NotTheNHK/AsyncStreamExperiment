@@ -423,27 +423,36 @@ struct AsyncStreamV2Tests {
 
 	@Test("onTermination finished reason")
 	func onTerminationFinishedReason() async throws {
-		let (_, continuation) = AsyncStreamV2<String>.makeStream()
+		await confirmation { confirm in
+			let (_, continuation) = AsyncStreamV2<String>.makeStream()
 
-		continuation.onTermination = { terminal in
-			#expect(terminal == .finished)
+			continuation.onTermination = { terminal in
+				if case .finished = terminal {
+					confirm()
+				}
+			}
+
+			continuation.finish()
 		}
-
-		continuation.finish()
 	}
 
 	@Test("onTermination receives .finished when finish() is called")
 	func terminationOnDeinitAfterFinishIsFinished() async {
-		func scopedLifetime() {
-			_ = AsyncStreamV2<Int> { continuation in
-				continuation.onTermination = { terminal in
-					#expect(terminal == .finished)
-				}
-				continuation.finish()
-			}
-		}
+		await confirmation { confirm in
+			func scopedLifetime() {
+				_ = AsyncStreamV2<Int> { continuation in
+					continuation.onTermination = { terminal in
+						if case .finished = terminal {
+							confirm()
+						}
+					}
 
-		scopedLifetime()
+					continuation.finish()
+				}
+			}
+
+			scopedLifetime()
+		}
 	}
 
 	@Test("onTermination called exactly once")
@@ -464,15 +473,19 @@ struct AsyncStreamV2Tests {
 
 	@Test("cancellation behavior on deinit with no values being awaited")
 	func cancellationOnDeinit() async {
-		func scopedLifetime() {
-			_ = AsyncStreamV2<Int> { continuation in
-				continuation.onTermination = { terminal in
-					#expect(terminal == .cancelled)
+		await confirmation { confirm in
+			func scopedLifetime() {
+				_ = AsyncStreamV2<Int> { continuation in
+					continuation.onTermination = { terminal in
+						if case .cancelled = terminal {
+							confirm()
+						}
+					}
 				}
 			}
-		}
 
-		scopedLifetime()
+			scopedLifetime()
+		}
 	}
 
 	@Test("onTermination behavior when canceled")
@@ -524,31 +537,36 @@ struct AsyncStreamV2Tests {
 
 	@Test("task cancellation terminates stream")
 	func taskCancellationTerminatesStream() async throws {
-		let (stream, continuation) = AsyncStreamV2<Int>.makeStream()
-		continuation.onTermination = { terminal in
-			#expect(terminal == .cancelled)
+		await confirmation { confirm in
+			let (stream, continuation) = AsyncStreamV2<Int>.makeStream()
+
+			continuation.onTermination = { terminal in
+				if case .cancelled = terminal {
+					confirm()
+				}
+			}
+
+			let (controlStream, controlContinuation) = AsyncStreamV2<Void>.makeStream()
+			let controlIterator = controlStream.makeAsyncIterator()
+
+			let task = Task { @MainActor in
+				let iterator = stream.makeAsyncIterator()
+
+				controlContinuation.yield(Void())
+
+				return await iterator.next(isolation: #isolation)
+			}
+
+			_ = await controlIterator.next(isolation: #isolation)
+
+			await MainActor.run {}
+
+			#expect(continuation.onTermination != nil)
+			task.cancel()
+			#expect(continuation.onTermination == nil)
+
+			#expect(await task.value == nil)
 		}
-
-		let (controlStream, controlContinuation) = AsyncStreamV2<Void>.makeStream()
-		let controlIterator = controlStream.makeAsyncIterator()
-
-		let task = Task { @MainActor in
-			let iterator = stream.makeAsyncIterator()
-
-			controlContinuation.yield(Void())
-
-			return await iterator.next(isolation: #isolation)
-		}
-
-		_ = await controlIterator.next(isolation: #isolation)
-
-		await MainActor.run {}
-
-		#expect(continuation.onTermination != nil)
-		task.cancel()
-		#expect(continuation.onTermination == nil)
-
-		#expect(await task.value == nil)
 	}
 
 	// MARK: - Multiple Consumers

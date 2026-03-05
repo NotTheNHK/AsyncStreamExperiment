@@ -1,10 +1,16 @@
 import Testing
 @testable import AsyncStreamExperiment
 
+func f() async throws(SomeError) {
+	try await withUnsafeContinuation { (continuation: UnsafeContinuation<Result<Void, SomeError>, Never>) in
+		continuation.resume(returning: .failure(SomeError()))
+	}.get()
+}
+
 struct AsyncThrowingStreamV2Tests {
 	@Test("throwing factory method")
 	func throwingFactoryMethod() async throws {
-		let (stream, continuation) = AsyncThrowingStreamV2.makeStream(of: String.self, throwing: Error.self)
+		let (stream, continuation) = AsyncThrowingStreamV2.makeStream(of: String.self)
 
 		continuation.yield("hello")
 
@@ -29,15 +35,15 @@ struct AsyncThrowingStreamV2Tests {
 	// MARK: - Yielding
 
 	@Test("yield with no awaiting next throwing")
-	func yieldWithNoAwaitingNextThrowing() async throws {
-		_ = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+	func yieldWithNoAwaitingNextThrowing() async throws { // How can we translate this to Swift Testing?
+		_ = AsyncThrowingStreamV2(String.self) { continuation in
 			continuation.yield("hello")
 		}
 	}
 
 	@Test("yield with awaiting next throwing")
 	func yieldWithAwaitingNextThrowing() async throws {
-		let series = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+		let series = AsyncThrowingStreamV2(String.self) { continuation in
 			continuation.yield("hello")
 		}
 
@@ -48,7 +54,7 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("yield with awaiting next 2 throwing")
 	func yieldWithAwaitingNextTwoThrowing() async throws {
-		let series = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+		let series = AsyncThrowingStreamV2(String.self) { continuation in
 			continuation.yield("hello")
 			continuation.yield("world")
 		}
@@ -63,7 +69,7 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("yield with awaiting next detached throwing")
 	func yieldWithAwaitingNextDetachedThrowing() async throws {
-		let series = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+		let series = AsyncThrowingStreamV2(String.self) { continuation in
 			Task.detached {
 				continuation.yield("hello")
 			}
@@ -75,8 +81,8 @@ struct AsyncThrowingStreamV2Tests {
 	}
 
 	@Test("yield with no awaiting next detached throwing")
-	func yieldWithNoAwaitingNextDetachedThrowing() async throws {
-		_ = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+	func yieldWithNoAwaitingNextDetachedThrowing() async throws { // How can we translate this to Swift Testing?
+		_ = AsyncThrowingStreamV2(String.self) { continuation in
 			Task.detached {
 				continuation.yield("hello")
 			}
@@ -85,7 +91,7 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("yield with awaiting next 2 detached throwing")
 	func yieldWithAwaitingNextTwoDetachedThrowing() async throws {
-		let series = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+		let series = AsyncThrowingStreamV2(String.self) { continuation in
 			Task.detached {
 				continuation.yield("hello")
 				continuation.yield("world")
@@ -102,7 +108,7 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("yield with awaiting next 2 and finish throwing")
 	func yieldWithAwaitingNextTwoAndFinishThrowing() async throws {
-		let series = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+		let series = AsyncThrowingStreamV2(String.self) { continuation in
 			continuation.yield("hello")
 			continuation.yield("world")
 			continuation.finish()
@@ -171,15 +177,17 @@ struct AsyncThrowingStreamV2Tests {
 		let series = AsyncThrowingStreamV2<String, SomeError> { continuation in
 			continuation.yield("before error")
 
-			if case .terminated = continuation.yield(with: .failure(SomeError())) {
+			switch continuation.yield(with: .failure(SomeError())) {
+			case .terminated:
 				#expect(true)
-			} else {
+			default:
 				Issue.record("expected .terminated from yield(with: .failure)")
 			}
 
-			if case .terminated = continuation.yield("should not appear") {
+			switch continuation.yield("should not appear") {
+			case .terminated:
 				#expect(true)
-			} else {
+			default:
 				Issue.record("expected .terminated after error")
 			}
 		}
@@ -193,11 +201,28 @@ struct AsyncThrowingStreamV2Tests {
 		#expect(try await iterator.next(isolation: #isolation) == nil)
 	}
 
+	@Test("yield with awaiting next 2 and finish with throw after finish throwing")
+	func yieldWithAwaitingNextTwoAndFinishWithThrowAfterFinishThrowing() async throws {
+		let series = AsyncThrowingStreamV2(String.self, SomeError.self) { continuation in
+			continuation.yield("hello")
+			continuation.yield("world")
+			continuation.finish()
+			continuation.finish(throwing: SomeError())
+		}
+
+		let iterator = series.makeAsyncIterator()
+
+		#expect(try await iterator.next(isolation: #isolation) == "hello")
+		#expect(try await iterator.next(isolation: #isolation) == "world")
+		#expect(try await iterator.next(isolation: #isolation) == nil)
+		#expect(try await iterator.next(isolation: #isolation) == nil)
+	}
+
 	// MARK: - Detached Finish
 
 	@Test("yield with awaiting next 2 and finish detached throwing")
 	func yieldWithAwaitingNextTwoAndFinishDetachedThrowing() async throws {
-		let series = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+		let series = AsyncThrowingStreamV2(String.self) { continuation in
 			Task.detached {
 				continuation.yield("hello")
 				continuation.yield("world")
@@ -214,13 +239,11 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("yield with awaiting next 2 and throw detached")
 	func yieldWithAwaitingNextTwoAndThrowDetached() async throws {
-		let thrownError = SomeError()
-
 		let series = AsyncThrowingStreamV2(String.self, SomeError.self) { continuation in
 			Task.detached {
 				continuation.yield("hello")
 				continuation.yield("world")
-				continuation.finish(throwing: thrownError)
+				continuation.finish(throwing: SomeError())
 			}
 		}
 
@@ -235,7 +258,7 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("yield with awaiting next 2 and finish detached with value after finish throwing")
 	func yieldWithAwaitingNextTwoAndFinishDetachedWithValueAfterFinishThrowing() async throws {
-		let series = AsyncThrowingStreamV2(String.self, Error.self) { continuation in
+		let series = AsyncThrowingStreamV2(String.self) { continuation in
 			Task.detached {
 				continuation.yield("hello")
 				continuation.yield("world")
@@ -254,34 +277,13 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("yield with awaiting next 2 and finish detached with throw after finish throwing")
 	func yieldWithAwaitingNextTwoAndFinishDetachedWithThrowAfterFinishThrowing() async throws {
-		let thrownError = SomeError()
-
 		let series = AsyncThrowingStreamV2(String.self, SomeError.self) { continuation in
 			Task.detached {
 				continuation.yield("hello")
 				continuation.yield("world")
 				continuation.finish()
-				continuation.finish(throwing: thrownError)
+				continuation.finish(throwing: SomeError())
 			}
-		}
-
-		let iterator = series.makeAsyncIterator()
-
-		#expect(try await iterator.next(isolation: #isolation) == "hello")
-		#expect(try await iterator.next(isolation: #isolation) == "world")
-		#expect(try await iterator.next(isolation: #isolation) == nil)
-		#expect(try await iterator.next(isolation: #isolation) == nil)
-	}
-
-	@Test("yield with awaiting next 2 and finish with throw after finish throwing")
-	func yieldWithAwaitingNextTwoAndFinishWithThrowAfterFinishThrowing() async throws {
-		let thrownError = SomeError()
-
-		let series = AsyncThrowingStreamV2(String.self, SomeError.self) { continuation in
-			continuation.yield("hello")
-			continuation.yield("world")
-			continuation.finish()
-			continuation.finish(throwing: thrownError)
 		}
 
 		let iterator = series.makeAsyncIterator()
@@ -329,39 +331,44 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("cancellation behavior on deinit with no values being awaited throwing")
 	func cancellationOnDeinit() async {
-		func scopedLifetime() {
-			_ = AsyncThrowingStreamV2<Int, Error> { continuation in
-				continuation.onTermination = { terminal in
-					switch terminal {
-					case .cancelled:
-						#expect(true)
-					case .finished:
-						Issue.record("Wrong Termination State")
+		await confirmation { confirm in
+			func scopedLifetime() {
+				_ = AsyncThrowingStreamV2<Int, Error> { continuation in
+					continuation.onTermination = { terminal in
+						switch terminal {
+						case .cancelled:
+							confirm()
+						case .finished:
+							Issue.record("Wrong Termination State")
+						}
 					}
 				}
 			}
-		}
 
-		scopedLifetime()
+			scopedLifetime()
+		}
 	}
 
 	@Test("onTermination receives .finished when finish() is called throwing")
 	func terminationOnDeinitAfterFinishIsFinished() async {
-		func scopedLifetime() {
-			_ = AsyncThrowingStreamV2<Int, Error> { continuation in
-				continuation.onTermination = { terminal in
-					switch terminal {
-					case .finished:
-						#expect(true)
-					case .cancelled:
-						Issue.record("Wrong Termination State")
+		await confirmation { confirm in
+			func scopedLifetime() {
+				_ = AsyncThrowingStreamV2<Int, Error> { continuation in
+					continuation.onTermination = { terminal in
+						switch terminal {
+						case .finished:
+							confirm()
+						case .cancelled:
+							Issue.record("Wrong Termination State")
+						}
 					}
-				}
-				continuation.finish()
-			}
-		}
 
-		scopedLifetime()
+					continuation.finish()
+				}
+			}
+
+			scopedLifetime()
+		}
 	}
 
 	@Test("onTermination behavior when canceled throwing")
@@ -379,7 +386,6 @@ struct AsyncThrowingStreamV2Tests {
 				Issue.record("unexpected termination reason")
 			}
 
-			// Yielding or re-entrantly terminating the stream should be ignored
 			switch continuation.yield(with: .success("terminated")) {
 			case .terminated:
 				break;
@@ -449,34 +455,46 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("onTermination throwing finished reasons no error")
 	func onTerminationThrowingFinishedReasonsNoError() async throws {
-		let (_, continuation) = AsyncThrowingStreamV2<String, Error>.makeStream()
+		await confirmation { confirm in
+			let (_, continuation) = AsyncThrowingStreamV2<String, Error>.makeStream()
 
-		continuation.onTermination = { terminal in
-			switch terminal {
-			case let .finished(failure):
-				#expect(failure == nil)
-			case .cancelled:
-				Issue.record("Wrong terminal state")
+			continuation.onTermination = { terminal in
+				switch terminal {
+				case let .finished(failure?):
+					_ = failure
+					Issue.record("'failure' should be nil")
+				case .finished:
+					confirm()
+				case .cancelled:
+					Issue.record("Wrong terminal state")
+				}
 			}
-		}
 
-		continuation.finish()
+			continuation.finish()
+		}
 	}
+
+
 
 	@Test("onTermination throwing finished reasons with error")
 	func onTerminationThrowingFinishedReasonsWithError() async throws {
-		let (_, continuation) = AsyncThrowingStreamV2<String, SomeError>.makeStream()
+		await confirmation { confirm in
+			let (_, continuation) = AsyncThrowingStreamV2<String, SomeError>.makeStream()
 
-		continuation.onTermination = { terminal in
-			switch terminal {
-			case let .finished(failure):
-				#expect(failure != nil)
-			case .cancelled:
-				Issue.record("Wrong terminal state")
+			continuation.onTermination = { terminal in
+				switch terminal {
+				case let .finished(failure?):
+					_ = failure
+					confirm()
+				case .finished:
+					Issue.record("Failure was nil, expected .some(value) instead")
+				default:
+					Issue.record("Wrong terminal state")
+				}
 			}
-		}
 
-		continuation.finish(throwing: SomeError())
+			continuation.finish(throwing: SomeError())
+		}
 	}
 
 	@Test("onTermination after finish throwing")
