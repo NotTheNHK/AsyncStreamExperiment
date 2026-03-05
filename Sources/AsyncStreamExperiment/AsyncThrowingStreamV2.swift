@@ -64,3 +64,28 @@ extension AsyncThrowingStreamV2 {
 		return (stream, continuation)
 	}
 }
+
+extension AsyncThrowingStreamV2 where Failure == Error {
+	init(
+		_ elementType: Element.Type = Element.self,
+		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
+		_ build: (Continuation) -> Void) {
+			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
+
+			self._storage = _storage
+
+			build(Continuation(_storage: _storage))
+		}
+
+	static func makeStream(
+		of elementType: Element.Type = Element.self,
+		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
+	-> (stream: AsyncThrowingStreamV2<Element, Failure>, continuation: Continuation) {
+		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
+
+		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
+		let stream = AsyncThrowingStreamV2(_storage: _storage)
+
+		return (stream, continuation)
+	}
+}

@@ -59,22 +59,24 @@ extension AsyncStreamV2 {
 			}
 		}
 
-		@discardableResult
-		public func yield() -> YieldResult where Element == Void {
-			return self._storage.yield(()).convertToAsyncStreamYieldResult()
-		}
-
 		public func finish() {
 			self._storage.terminate(.finished(nil))
 		}
 	}
 }
 
+extension AsyncStreamV2.Continuation where Element == Void {
+	@discardableResult
+	public func yield() -> YieldResult {
+		return self._storage.yield(Void()).convertToAsyncStreamYieldResult()
+	}
+}
+
 extension AsyncStreamV2.Continuation: Hashable {
 	public func hash(
 		into hasher: inout Hasher) {
-		return hasher.combine(ObjectIdentifier(self._storage))
-	}
+			return hasher.combine(ObjectIdentifier(self._storage))
+		}
 
 	public static func == (
 		lhs: AsyncStreamV2<Element>.Continuation,
