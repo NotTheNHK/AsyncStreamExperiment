@@ -37,9 +37,13 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	enum TerminateAction {
-		case callHandlerAndResume(terminationHandler: TerminationHandler?, consumers: Consumers, failure: Failure?)
+		case callHandlerAndResume(
+			terminationHandler: TerminationHandler?,
+			consumers: Consumers,
+			failure: Failure?)
 
-		case callHandler(terminationHandler: TerminationHandler?)
+		case callHandler(
+			terminationHandler: TerminationHandler?)
 
 		case none
 	}
