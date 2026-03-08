@@ -173,6 +173,7 @@ extension _Storage {
 		}
 	}
 
+	private
 	func next(_ consumer: Consumer) {
 		let action: NextAction = lock.withLock {
 			switch self.state {
@@ -235,6 +236,7 @@ extension _Storage {
 		}
 	}
 
+	nonisolated(nonsending)
 	func next() async throws(Failure) -> Element? {
 		return try await withTaskCancellationHandler {
 			await withUnsafeContinuation { consumer in

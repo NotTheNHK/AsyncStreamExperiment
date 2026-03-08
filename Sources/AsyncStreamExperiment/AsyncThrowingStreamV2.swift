@@ -8,33 +8,33 @@
 import Foundation
 
 public struct AsyncThrowingStreamV2<Element, Failure: Error> {
-	private let _storage: _Storage<Element, Failure>
+	private let _context: _Context<Element, Failure>
 
-	init(_storage: _Storage<Element, Failure>) {
-		self._storage = _storage
+	init(_context: _Context<Element, Failure>) {
+		self._context = _context
 	}
 }
 
-extension AsyncThrowingStreamV2: Sendable where Element: Sendable {}
+extension AsyncThrowingStreamV2: @unchecked Sendable where Element: Sendable {}
 
 extension AsyncThrowingStreamV2: AsyncSequence {
 	public typealias Element = Element
 	public typealias Failure = Failure
 
 	public struct AsyncIterator: AsyncIteratorProtocol {
-		private let _storage: _Storage<Element, Failure>
+		private let _context: _Context<Element, Failure>
 
-		init(_storage: _Storage<Element, Failure>) {
-			self._storage = _storage
+		init(_context: _Context<Element, Failure>) {
+			self._context = _context
 		}
 
 		public func next(isolation actor: isolated (any Actor)?) async throws(Failure) -> Element? {
-			try await self._storage.next()
+			try await self._context.produce()
 		}
 	}
 
 	public func makeAsyncIterator() -> AsyncIterator {
-		AsyncIterator(_storage: self._storage)
+		AsyncIterator(_context: self._context)
 	}
 }
 
@@ -46,7 +46,7 @@ extension AsyncThrowingStreamV2 {
 		_ build: (Continuation) -> Void) {
 			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
-			self._storage = _storage
+			self._context = _Context(_storage: _storage, produce: _storage.next)
 
 			build(Continuation(_storage: _storage))
 		}
@@ -59,20 +59,20 @@ extension AsyncThrowingStreamV2 {
 		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
-		let stream = AsyncThrowingStreamV2(_storage: _storage)
+		let stream = AsyncThrowingStreamV2(_context: _Context(_storage: _storage, produce: _storage.next))
 
 		return (stream, continuation)
 	}
 }
 
-extension AsyncThrowingStreamV2 where Failure == Error {
+extension AsyncThrowingStreamV2 where Failure == any Error {
 	init(
 		_ elementType: Element.Type = Element.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
 		_ build: (Continuation) -> Void) {
 			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
-			self._storage = _storage
+			self._context = _Context(_storage: _storage, produce: _storage.next)
 
 			build(Continuation(_storage: _storage))
 		}
@@ -84,8 +84,48 @@ extension AsyncThrowingStreamV2 where Failure == Error {
 		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
-		let stream = AsyncThrowingStreamV2(_storage: _storage)
+		let stream = AsyncThrowingStreamV2(_context: _Context(_storage: _storage, produce: _storage.next))
 
 		return (stream, continuation)
 	}
+}
+
+extension AsyncThrowingStreamV2 where Failure == any Error {
+	init(
+		unfolding produce: sending @escaping () async throws(Failure) -> Element?,
+		onCancel: (@Sendable () -> Void)? = nil) {
+			self._context = _Context {
+				return try await withTaskCancellationHandler {
+					guard
+						let element = try await produce()
+					else { return nil }
+
+					return element
+				} onCancel: {
+					onCancel?()
+				}
+			}
+		}
+}
+
+extension AsyncThrowingStreamV2 {
+	init(
+		unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
+		onCancel: (@Sendable () -> Void)? = nil) {
+			let thunk: nonisolated(nonsending) () async throws(Failure) -> Element? = {
+				let result: Result<Element?, Failure> = await withTaskCancellationHandler { // Once `withTaskCancellationHandler`'s `nonisolated(nonsending)` change lands `produce` will inherit the callers executor.
+					do throws(Failure) {
+						return try await .success(produce())
+					} catch {
+						return .failure(error)
+					}
+				} onCancel: {
+					onCancel?()
+				}
+
+				return try result.get()
+			}
+
+			self._context = _Context(produce: thunk)
+		}
 }
