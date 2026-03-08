@@ -64,7 +64,7 @@ extension AsyncStreamV2 {
 }
 
 extension AsyncStreamV2 {
-	init(
+	public init(
 		unfolding produce: nonisolated(nonsending) sending @escaping () async -> Element?,
 		onCancel: (@Sendable () -> Void)? = nil) {
 			self._context = _Context {

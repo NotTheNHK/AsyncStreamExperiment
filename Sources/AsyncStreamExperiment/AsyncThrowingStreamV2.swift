@@ -39,7 +39,7 @@ extension AsyncThrowingStreamV2: AsyncSequence {
 }
 
 extension AsyncThrowingStreamV2 {
-	init(
+	public init(
 		_ elementType: Element.Type = Element.self,
 		_ failureType: Failure.Type = Failure.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
@@ -51,7 +51,7 @@ extension AsyncThrowingStreamV2 {
 			build(Continuation(_storage: _storage))
 		}
 
-	static func makeStream(
+	public static func makeStream(
 		of elementType: Element.Type = Element.self,
 		throwing failureType: Failure.Type = Failure.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
@@ -66,7 +66,7 @@ extension AsyncThrowingStreamV2 {
 }
 
 extension AsyncThrowingStreamV2 where Failure == any Error {
-	init(
+	public init(
 		_ elementType: Element.Type = Element.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
 		_ build: (Continuation) -> Void) {
@@ -77,7 +77,7 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 			build(Continuation(_storage: _storage))
 		}
 
-	static func makeStream(
+	public static func makeStream(
 		of elementType: Element.Type = Element.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
 	-> (stream: AsyncThrowingStreamV2<Element, Failure>, continuation: Continuation) {
@@ -90,26 +90,8 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 	}
 }
 
-extension AsyncThrowingStreamV2 where Failure == any Error {
-	init(
-		unfolding produce: sending @escaping () async throws(Failure) -> Element?,
-		onCancel: (@Sendable () -> Void)? = nil) {
-			self._context = _Context {
-				return try await withTaskCancellationHandler {
-					guard
-						let element = try await produce()
-					else { return nil }
-
-					return element
-				} onCancel: {
-					onCancel?()
-				}
-			}
-		}
-}
-
 extension AsyncThrowingStreamV2 {
-	init(
+	public init(
 		unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
 		onCancel: (@Sendable () -> Void)? = nil) {
 			let thunk: nonisolated(nonsending) () async throws(Failure) -> Element? = {
@@ -127,5 +109,19 @@ extension AsyncThrowingStreamV2 {
 			}
 
 			self._context = _Context(produce: thunk)
+		}
+}
+
+extension AsyncThrowingStreamV2 where Failure == any Error {
+	public init(
+		unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
+		onCancel: (@Sendable () -> Void)? = nil) {
+			self._context = _Context {
+				return try await withTaskCancellationHandler {
+					try await produce()
+				} onCancel: {
+					onCancel?()
+				}
+			}
 		}
 }
