@@ -94,15 +94,21 @@ extension AsyncThrowingStreamV2 {
 	public init(
 		unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
 		onCancel: (@Sendable () -> Void)? = nil) {
+			let unfoldingStorage = CriticalUnfoldingStorage(
+				producer: produce,
+				onCancel: onCancel)
+
+			// Once `withTaskCancellationHandler`'s `nonisolated(nonsending)` change lands `produce` will inherit the callers executor.
 			let thunk: nonisolated(nonsending) () async throws(Failure) -> Element? = {
-				let result: Result<Element?, Failure> = await withTaskCancellationHandler { // Once `withTaskCancellationHandler`'s `nonisolated(nonsending)` change lands `produce` will inherit the callers executor.
+				let result: Result<Element?, Failure> = await withTaskCancellationHandler {
 					do throws(Failure) {
-						return try await .success(produce())
+						return try await .success(unfoldingStorage.produce())
 					} catch {
 						return .failure(error)
 					}
 				} onCancel: {
-					onCancel?()
+					unfoldingStorage.removeProduce()
+					unfoldingStorage.callOnCancel()
 				}
 
 				return try result.get()
@@ -116,11 +122,17 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 	public init(
 		unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
 		onCancel: (@Sendable () -> Void)? = nil) {
+			let unfoldingStorage = CriticalUnfoldingStorage(
+				producer: produce,
+				onCancel: onCancel)
+
+			// Once `withTaskCancellationHandler` `nonisolated(nonsending)` change lands `produce` will inherit the callers executor.
 			self._context = _Context {
 				return try await withTaskCancellationHandler {
-					try await produce()
+					return try await unfoldingStorage.produce()
 				} onCancel: {
-					onCancel?()
+					unfoldingStorage.removeProduce()
+					unfoldingStorage.callOnCancel()
 				}
 			}
 		}

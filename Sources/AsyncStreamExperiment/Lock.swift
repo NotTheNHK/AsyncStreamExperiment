@@ -31,4 +31,12 @@ extension Lock {
 
 		return try action()
 	}
+
+	func lock() {
+		os_unfair_lock_lock(self)
+	}
+
+	func unlock() {
+		os_unfair_lock_unlock(self)
+	}
 }

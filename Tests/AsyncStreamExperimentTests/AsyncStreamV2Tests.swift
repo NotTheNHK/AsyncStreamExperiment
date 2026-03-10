@@ -642,4 +642,51 @@ struct AsyncStreamV2Tests {
 		_ = await consumer1.value
 		_ = await consumer2.value
 	}
+
+	// MARK: - Unfolding Initializer
+
+	@Test("unfolding init: basic")
+	func unfoldingBasic() async throws {
+		nonisolated(unsafe) var counter = 0
+
+		let stream = AsyncStreamV2<Int>(unfolding: {
+			counter += 1
+
+			return counter <= 3 ? counter : nil
+		})
+
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(await iterator.next(isolation: #isolation) == 1)
+		#expect(await iterator.next(isolation: #isolation) == 2)
+		#expect(await iterator.next(isolation: #isolation) == 3)
+		#expect(await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("unfolding init: onCancel called when task is cancelled")
+	func unfoldingOnCancelCalledWhenTaskIsCancelled() async throws {
+		await confirmation { confirm in
+			var counter = 0
+
+			let stream = AsyncStreamV2(
+				unfolding: {
+					counter += 1
+
+					if counter == 2 {
+						withUnsafeCurrentTask { $0?.cancel() }
+					}
+
+					return counter
+				},
+				onCancel: {
+					confirm()
+				})
+
+			let iterator = stream.makeAsyncIterator()
+
+			#expect(await iterator.next(isolation: #isolation) == 1)
+			#expect(await iterator.next(isolation: #isolation) == 2)
+			#expect(await iterator.next(isolation: #isolation) == nil)
+		}
+	}
 }

@@ -26,6 +26,79 @@ struct AsyncThrowingStreamV2Tests {
 		#expect(continuation1.hashValue != continuation2.hashValue)
 	}
 
+	// MARK: - Unfolding Initializer
+
+	@Test("unfolding init: basic throwing")
+	func unfoldingBasicThrowing() async throws {
+		nonisolated(unsafe) var counter = 0
+
+		let stream = AsyncThrowingStreamV2<Int, Error>(unfolding: {
+			counter += 1
+
+			return counter <= 3 ? counter : nil
+		})
+
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(try await iterator.next(isolation: #isolation) == 1)
+		#expect(try await iterator.next(isolation: #isolation) == 2)
+		#expect(try await iterator.next(isolation: #isolation) == 3)
+		#expect(try await iterator.next(isolation: #isolation) == nil)
+	}
+
+	@Test("unfolding init: onCancel called when task is cancelled Throwing")
+	func unfoldingOnCancelCalledWhenTaskIsCancelledThrowing() async throws {
+		try await confirmation { confirm in
+			var counter = 0
+
+			let stream = AsyncThrowingStreamV2(
+				unfolding: {
+					counter += 1
+
+					if counter == 2 {
+						withUnsafeCurrentTask { $0?.cancel() }
+					}
+
+					return counter
+				},
+				onCancel: {
+					confirm()
+				})
+
+			let iterator = stream.makeAsyncIterator()
+
+			try #expect(await iterator.next(isolation: #isolation) == 1)
+			try #expect(await iterator.next(isolation: #isolation) == 2)
+			try #expect(await iterator.next(isolation: #isolation) == nil)
+		}
+	}
+
+	@Test("unfolding init: Throwing")
+	func unfoldingThrowing() async throws {
+		var counter = 0
+
+		let stream = AsyncThrowingStreamV2<Int, SomeError>(
+			unfolding: { () async throws(SomeError) -> Int? in
+				counter += 1
+
+				if counter == 3 {
+					throw SomeError()
+				}
+
+				return counter < 3 ? counter : nil
+			},
+			onCancel: {})
+
+		let iterator = stream.makeAsyncIterator()
+
+		#expect(try await iterator.next(isolation: #isolation) == 1)
+		#expect(try await iterator.next(isolation: #isolation) == 2)
+		await #expect(throws: SomeError.self) {
+			try await iterator.next(isolation: #isolation)
+		}
+		#expect(try await iterator.next(isolation: #isolation) == nil)
+	}
+
 	// MARK: - Yielding
 
 	@Test("yield with no awaiting next throwing")
