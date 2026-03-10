@@ -1,5 +1,5 @@
 import Testing
-@testable import AsyncStreamExperiment
+import AsyncStreamExperiment
 
 struct AsyncStreamV2Tests {
 	@Test("factory method")

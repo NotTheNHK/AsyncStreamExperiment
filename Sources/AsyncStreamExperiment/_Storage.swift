@@ -1,9 +1,3 @@
-//
-// _Storage.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/11/26 at 11:51 PM
-//
 
 import Collections
 

@@ -1,9 +1,3 @@
-//
-// CriticalUnfoldingStorage.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 3/10/26 at 9:21 PM
-//
 
 final class CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 	private let lock = Lock.create()

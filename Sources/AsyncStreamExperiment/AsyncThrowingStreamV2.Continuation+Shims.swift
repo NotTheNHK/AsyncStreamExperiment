@@ -1,11 +1,3 @@
-//
-// AsyncThrowingStreamV2.Continuation+Shims.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/27/26 at 1:03 PM
-//
-
-import Foundation
 
 extension AsyncThrowingStreamV2.Continuation.BufferingPolicy {
 	func convertToContinuationBufferingPolicy() -> _Storage<Element, Failure>.Continuation.BufferingPolicy {

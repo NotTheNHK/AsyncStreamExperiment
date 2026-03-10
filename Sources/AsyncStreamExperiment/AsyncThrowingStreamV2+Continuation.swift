@@ -1,11 +1,3 @@
-//
-// AsyncThrowingStreamV2+Continuation.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/27/26 at 1:02 PM
-//
-
-import Foundation
 
 extension AsyncThrowingStreamV2 {
 	public struct Continuation: Sendable {

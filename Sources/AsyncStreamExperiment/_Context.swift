@@ -1,11 +1,3 @@
-//
-// _Context.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 3/7/26 at 5:31 PM
-//
-
-import Foundation
 
 final class _Context<Element, Failure: Error> {
 	let _storage: _Storage<Element, Failure>?

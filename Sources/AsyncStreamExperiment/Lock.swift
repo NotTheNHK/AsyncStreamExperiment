@@ -1,10 +1,3 @@
-//
-// Lock.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/11/26 at 11:36 PM
-//
-
 import Foundation
 
 typealias Lock = os_unfair_lock_t

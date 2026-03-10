@@ -1,11 +1,3 @@
-//
-// AsyncStreamV2+Continuation.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/12/26 at 12:28 AM
-//
-
-import Foundation
 
 extension AsyncStreamV2 {
 	public struct Continuation: Sendable {

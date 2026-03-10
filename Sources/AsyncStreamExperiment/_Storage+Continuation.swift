@@ -1,11 +1,3 @@
-//
-// _Storage+Continuation.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/12/26 at 4:13 PM
-//
-
-import Foundation
 
 extension _Storage {
 	struct Continuation {

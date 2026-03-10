@@ -1,5 +1,5 @@
 import Testing
-@testable import AsyncStreamExperiment
+import AsyncStreamExperiment
 
 struct AsyncThrowingStreamV2Tests {
 	@Test("throwing factory method")

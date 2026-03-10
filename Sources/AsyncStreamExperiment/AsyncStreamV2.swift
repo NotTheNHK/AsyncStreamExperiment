@@ -1,11 +1,3 @@
-//
-// AsyncStreamV2.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/11/26 at 11:45 PM
-//
-
-import Foundation
 
 public struct AsyncStreamV2<Element> {
 	private let _context: _Context<Element, Never>

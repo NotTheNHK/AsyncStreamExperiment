@@ -1,11 +1,3 @@
-//
-// AsyncThrowingStreamV2.swift
-// AsyncStreamExperiment
-//
-// Created by NotTheNHK on 2/27/26 at 12:56 PM
-//
-
-import Foundation
 
 public struct AsyncThrowingStreamV2<Element, Failure: Error> {
 	private let _context: _Context<Element, Failure>
