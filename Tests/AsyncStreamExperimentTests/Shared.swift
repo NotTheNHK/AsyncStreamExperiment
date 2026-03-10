@@ -3,7 +3,7 @@ struct SomeError: Error, Equatable {
 }
 
 import Testing
-@testable import AsyncStreamExperiment
+import AsyncStreamExperiment
 
 @Test("unfolding closure inherits callers executor")
 func unfoldingClosureInheritsCallersExecutor() async throws { // TODO: How can we model this?
