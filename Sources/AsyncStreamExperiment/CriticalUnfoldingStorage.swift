@@ -1,5 +1,5 @@
 
-final class CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
+final class _CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 	private let lock = Lock.create()
 
 	private var producer: (nonisolated(nonsending) () async throws(Failure) -> Element?)?

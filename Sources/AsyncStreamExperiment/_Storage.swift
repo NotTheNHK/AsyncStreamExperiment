@@ -158,7 +158,7 @@ extension _Storage {
 
 		switch action {
 		case let .resume(consumer, element):
-			let element = UnsafeSendable(element).take()
+			let element = _UnsafeSendable(element).take()
 			consumer.resume(returning: .success(element))
 			return result
 

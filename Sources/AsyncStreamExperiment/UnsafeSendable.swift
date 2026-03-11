@@ -1,5 +1,5 @@
 
-struct UnsafeSendable<Value: ~Copyable>: @unchecked Sendable, ~Copyable {
+struct _UnsafeSendable<Value: ~Copyable>: @unchecked Sendable, ~Copyable {
 	private let value: Value
 
 	init(_ value: consuming Value) {

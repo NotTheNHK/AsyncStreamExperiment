@@ -1,9 +1,10 @@
-struct SomeError: Error, Equatable {
-	var value = Int.random(in: 0..<100)
-}
 
 import Testing
 import AsyncStreamExperiment
+
+struct SomeError: Error, Equatable {
+	var value = Int.random(in: 0..<100)
+}
 
 @Test("unfolding closure inherits callers executor")
 func unfoldingClosureInheritsCallersExecutor() async throws { // TODO: How can we model this?

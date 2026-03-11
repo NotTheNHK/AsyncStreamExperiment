@@ -59,17 +59,17 @@ extension AsyncStreamV2 {
 	public init(
 		unfolding produce: nonisolated(nonsending) sending @escaping () async -> Element?,
 		onCancel: (@Sendable () -> Void)? = nil) {
-			let unfoldingStorage = CriticalUnfoldingStorage(
+			let _unfoldingStorage = _CriticalUnfoldingStorage(
 				producer: produce,
 				onCancel: onCancel)
 
 			// Once `withTaskCancellationHandler` `nonisolated(nonsending)` change lands `produce` will inherit the callers executor.
 			self._context = _Context {
 				return await withTaskCancellationHandler {
-					return await unfoldingStorage.produce()
+					return await _unfoldingStorage.produce()
 				} onCancel: {
-					unfoldingStorage.removeProduce()
-					unfoldingStorage.callOnCancel()
+					_unfoldingStorage.removeProduce()
+					_unfoldingStorage.callOnCancel()
 				}
 			}
 		}
