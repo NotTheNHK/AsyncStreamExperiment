@@ -20,7 +20,7 @@ extension AsyncThrowingStreamV2: AsyncSequence {
 			self._context = _context
 		}
 
-		public func next(isolation actor: isolated (any Actor)?) async throws(Failure) -> Element? {
+		public func next(isolation actor: isolated (any Actor)? = #isolation) async throws(Failure) -> Element? {
 			try await self._context.produce()
 		}
 	}
