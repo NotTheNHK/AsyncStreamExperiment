@@ -1,6 +1,6 @@
 
 final class _CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
-	private let lock = Lock.create()
+	private let lock: Lock
 
 	private var producer: (nonisolated(nonsending) () async throws(Failure) -> Element?)?
 	private var onCancel: (@Sendable () -> Void)?
@@ -8,6 +8,7 @@ final class _CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Senda
 	init(
 		producer: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
 		onCancel: (@Sendable () -> Void)?) {
+			self.lock = .create()
 			self.producer = producer
 			self.onCancel = onCancel
 		}

@@ -72,6 +72,27 @@ struct AsyncStreamV2Tests {
 		}
 	}
 
+	@Test("unfolding init: onCancel called only once")
+	func unfoldingInitOnCancelCalledOnlyOnce() async throws {
+		await confirmation { confirm in
+			let stream = AsyncStreamV2<Int>.init(
+				unfolding: {
+					return nil
+				},
+				onCancel: {
+					confirm()
+				})
+
+			withUnsafeCurrentTask { $0?.cancel() }
+
+			let iterator = stream.makeAsyncIterator()
+
+			_ = await iterator.next(isolation: #isolation)
+			_ = await iterator.next(isolation: #isolation)
+			_ = await iterator.next(isolation: #isolation)
+		}
+	}
+
 	// MARK: - Yielding
 
 	@Test("yield with no awaiting next")
