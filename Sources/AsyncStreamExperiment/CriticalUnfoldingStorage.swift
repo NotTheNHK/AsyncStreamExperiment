@@ -12,6 +12,10 @@ final class _CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Senda
 			self.onCancel = onCancel
 		}
 
+	deinit {
+		Lock.destroy(lock)
+	}
+
 	nonisolated(nonsending)
 	func produce() async throws(Failure) -> Element? {
 		lock.lock() // TODO: `withLock` crashes the compiler
