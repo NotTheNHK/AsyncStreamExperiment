@@ -8,7 +8,7 @@ struct AsyncStreamV2Tests {
 		let (stream, continuation) = AsyncStreamV2<String>.makeStream()
 		continuation.yield("hello")
 
-		var iterator = stream.makeAsyncIterator()
+		let iterator = stream.makeAsyncIterator()
 		#expect(await iterator.next() == "hello")
 	}
 
@@ -86,8 +86,8 @@ struct AsyncStreamV2Tests {
 		let series = AsyncStreamV2<String> { continuation in
 			continuation.yield("hello")
 		}
-		var iterator = series.makeAsyncIterator()
-		#expect(await iterator.next() == "hello")
+		let iterator = series.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "hello")
 	}
 
 	@Test("yield with awaiting next 2")
@@ -96,9 +96,9 @@ struct AsyncStreamV2Tests {
 			continuation.yield("hello")
 			continuation.yield("world")
 		}
-		var iterator = series.makeAsyncIterator()
-		#expect(await iterator.next() == "hello")
-		#expect(await iterator.next() == "world")
+		let iterator = series.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "hello")
+		#expect(await iterator.next(isolation: #isolation) == "world")
 	}
 
 	@Test("yield with awaiting next 2 and finish")
@@ -108,10 +108,10 @@ struct AsyncStreamV2Tests {
 			continuation.yield("world")
 			continuation.finish()
 		}
-		var iterator = series.makeAsyncIterator()
-		#expect(await iterator.next() == "hello")
-		#expect(await iterator.next() == "world")
-		#expect(await iterator.next() == nil)
+		let iterator = series.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "hello")
+		#expect(await iterator.next(isolation: #isolation) == "world")
+		#expect(await iterator.next(isolation: #isolation) == nil)
 	}
 
 	// MARK: - Detached Yielding
@@ -132,8 +132,8 @@ struct AsyncStreamV2Tests {
 				continuation.yield("hello")
 			}
 		}
-		var iterator = series.makeAsyncIterator()
-		#expect(await iterator.next() == "hello")
+		let iterator = series.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "hello")
 	}
 
 	@Test("yield with awaiting next 2 detached")
@@ -144,9 +144,9 @@ struct AsyncStreamV2Tests {
 				continuation.yield("world")
 			}
 		}
-		var iterator = series.makeAsyncIterator()
-		#expect(await iterator.next() == "hello")
-		#expect(await iterator.next() == "world")
+		let iterator = series.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "hello")
+		#expect(await iterator.next(isolation: #isolation) == "world")
 	}
 
 	@Test("yield with awaiting next 2 and finish detached")
@@ -158,10 +158,10 @@ struct AsyncStreamV2Tests {
 				continuation.finish()
 			}
 		}
-		var iterator = series.makeAsyncIterator()
-		#expect(await iterator.next() == "hello")
-		#expect(await iterator.next() == "world")
-		#expect(await iterator.next() == nil)
+		let iterator = series.makeAsyncIterator()
+		#expect(await iterator.next(isolation: #isolation) == "hello")
+		#expect(await iterator.next(isolation: #isolation) == "world")
+		#expect(await iterator.next(isolation: #isolation) == nil)
 	}
 
 	@Test("yield with awaiting next 2 and finish detached with value after finish")
@@ -174,12 +174,12 @@ struct AsyncStreamV2Tests {
 				continuation.yield("This should not be emitted")
 			}
 		}
-		var iterator = series.makeAsyncIterator()
+		let iterator = series.makeAsyncIterator()
 
-		#expect(await iterator.next() == "hello")
-		#expect(await iterator.next() == "world")
-		#expect(await iterator.next() == nil)
-		#expect(await iterator.next() == nil)
+		#expect(await iterator.next(isolation: #isolation) == "hello")
+		#expect(await iterator.next(isolation: #isolation) == "world")
+		#expect(await iterator.next(isolation: #isolation) == nil)
+		#expect(await iterator.next(isolation: #isolation) == nil)
 	}
 
 	// MARK: - Yield Result Semantics
