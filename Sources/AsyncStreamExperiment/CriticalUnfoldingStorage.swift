@@ -42,7 +42,7 @@ final class _CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Senda
 
 	func callOnCancel() {
 		let onCancel = lock.withLock {
-			self.onCancel.take()
+			return self.onCancel.take()
 		}
 
 		onCancel?()
