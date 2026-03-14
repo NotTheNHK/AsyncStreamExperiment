@@ -10,9 +10,6 @@ public struct AsyncStreamV2<Element> {
 extension AsyncStreamV2: @unchecked Sendable where Element: Sendable {}
 
 extension AsyncStreamV2: AsyncSequence {
-	public typealias Element = Element
-	public typealias Failure = Never
-
 	public struct AsyncIterator: AsyncIteratorProtocol {
 		private let _context: _Context<Element, Never>
 
@@ -20,13 +17,13 @@ extension AsyncStreamV2: AsyncSequence {
 			self._context = _context
 		}
 
-		public func next(isolation actor: isolated (any Actor)? = #isolation) async throws(Failure) -> Element? {
-			await self._context.produce()
+		public func next(isolation actor: isolated (any Actor)? = #isolation) async -> Element? {
+			return await self._context.produce()
 		}
 	}
 
 	public func makeAsyncIterator() -> AsyncIterator {
-		AsyncIterator(_context: self._context)
+		return AsyncIterator(_context: self._context)
 	}
 }
 

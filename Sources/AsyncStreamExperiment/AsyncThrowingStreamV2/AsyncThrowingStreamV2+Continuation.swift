@@ -40,7 +40,7 @@ extension AsyncThrowingStreamV2 {
 
 		@discardableResult
 		public func yield(_ value: sending Element) -> YieldResult {
-			self._storage.yield(value).convertToAsyncThrowingStreamYieldResult()
+			return self._storage.yield(value).convertToAsyncThrowingStreamYieldResult()
 		}
 
 		@discardableResult
@@ -64,7 +64,7 @@ extension AsyncThrowingStreamV2 {
 extension AsyncThrowingStreamV2.Continuation where Element == Void {
 	@discardableResult
 	public func yield() -> YieldResult {
-		self._storage.yield(Void()).convertToAsyncThrowingStreamYieldResult()
+		return self._storage.yield(Void()).convertToAsyncThrowingStreamYieldResult()
 	}
 }
 

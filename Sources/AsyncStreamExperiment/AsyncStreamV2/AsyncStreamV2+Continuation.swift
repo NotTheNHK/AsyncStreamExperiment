@@ -31,7 +31,7 @@ extension AsyncStreamV2 {
 
 		public var onTermination: (@Sendable (Termination) -> Void)? {
 			get {
-				convertToAsyncStreamOnTermination(self._storage.getOnTermination())
+				return convertToAsyncStreamOnTermination(self._storage.getOnTermination())
 			}
 			nonmutating set {
 				self._storage.setOnTermination(convertToContinuationOnTermination(newValue))
@@ -40,7 +40,7 @@ extension AsyncStreamV2 {
 
 		@discardableResult
 		public func yield(_ value: sending Element) -> YieldResult {
-			self._storage.yield(value).convertToAsyncStreamYieldResult()
+			return self._storage.yield(value).convertToAsyncStreamYieldResult()
 		}
 
 		@discardableResult
