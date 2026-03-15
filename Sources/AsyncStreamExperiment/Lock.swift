@@ -1,5 +1,5 @@
 
-import Foundation
+import os
 
 typealias Lock = os_unfair_lock_t
 
