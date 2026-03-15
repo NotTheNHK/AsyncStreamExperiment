@@ -78,6 +78,8 @@ extension AsyncStreamV2.Continuation: Hashable {
 	}
 }
 
+extension AsyncStreamV2.Continuation.BufferingPolicy: Hashable {}
+
 extension AsyncStreamV2.Continuation.YieldResult: Sendable where Element: Sendable {}
 
 extension AsyncStreamV2.Continuation.YieldResult: Equatable where Element: Equatable {}
