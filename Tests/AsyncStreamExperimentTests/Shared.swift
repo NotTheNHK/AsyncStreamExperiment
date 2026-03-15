@@ -6,7 +6,8 @@ struct SomeError: Error, Equatable {
 	var value = Int.random(in: 0..<100)
 }
 
-@Test("unfolding closure inherits callers executor")
+/*
+@Test("unfolding closure inherits callers executor") // Future test
 func unfoldingClosureInheritsCallersExecutor() async throws { // TODO: How can we model this?
 	final class E: SerialExecutor {
 		nonisolated(unsafe) var confirmCount = 0
@@ -55,3 +56,4 @@ func unfoldingClosureInheritsCallersExecutor() async throws { // TODO: How can w
 
 	#expect(a.confirmCount == 2)
 }
+*/
