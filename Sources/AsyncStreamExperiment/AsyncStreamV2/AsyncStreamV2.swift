@@ -56,7 +56,7 @@ extension AsyncStreamV2 {
 	public init(
 		unfolding produce: nonisolated(nonsending) sending @escaping () async -> Element?,
 		onCancel: (@Sendable () -> Void)? = nil) {
-			let _unfoldingStorage = _CriticalUnfoldingStorage(
+			let _unfoldingStorage = _UnfoldingStorage(
 				producer: produce,
 				onCancel: onCancel)
 

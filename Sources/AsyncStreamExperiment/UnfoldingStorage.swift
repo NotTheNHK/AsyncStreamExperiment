@@ -1,5 +1,5 @@
 
-final class _CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
+final class _UnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 	private let lock: Lock
 
 	private var producer: (nonisolated(nonsending) () async throws(Failure) -> Element?)?
@@ -19,7 +19,7 @@ final class _CriticalUnfoldingStorage<Element, Failure: Error>: @unchecked Senda
 
 	nonisolated(nonsending)
 	func produce() async throws(Failure) -> Element? {
-		lock.lock() // TODO: `withLock` crashes the compiler
+		lock.lock() // TODO: `withLock` crashes the compiler here
 		let producer = self.producer.take()
 		lock.unlock()
 

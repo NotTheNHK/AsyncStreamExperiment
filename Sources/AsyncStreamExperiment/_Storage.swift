@@ -233,7 +233,7 @@ extension _Storage {
 	nonisolated(nonsending)
 	func next() async throws(Failure) -> Element? {
 		return try await withTaskCancellationHandler {
-			await withUnsafeContinuation { consumer in
+			return await withUnsafeContinuation { consumer in
 				self.next(consumer)
 			}
 		} onCancel: {
