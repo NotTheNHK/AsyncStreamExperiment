@@ -563,8 +563,6 @@ struct AsyncThrowingStreamV2Tests {
 		}
 	}
 
-
-
 	@Test("onTermination throwing finished reasons with error")
 	func onTerminationThrowingFinishedReasonsWithError() async throws {
 		await confirmation { confirm in
@@ -602,6 +600,26 @@ struct AsyncThrowingStreamV2Tests {
 		scopedLifetime()
 
 		#expect(onTerminationCalled == true)
+	}
+
+	@Test("continuation out of scope cancels stream throwing")
+	func continuationOutOfScopeThrowing() async throws {
+		try await confirmation { confirm in
+			let stream = AsyncThrowingStreamV2<Int, Error> { continuation in
+				continuation.onTermination = { terminal in
+					switch terminal {
+					case .cancelled:
+						confirm()
+					case .finished:
+						Issue.record("Wrong terminal state")
+					}
+				}
+			}
+
+			let iterator = stream.makeAsyncIterator()
+
+			_ = try await iterator.next()
+		}
 	}
 
 	// MARK: - Multiple Consumers

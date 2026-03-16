@@ -23,36 +23,36 @@ extension AsyncStreamV2 {
 			case cancelled
 		}
 
-		private let _storage: _Storage<Element, Never>
+		private let _context: _ContinuationContext<Element, Never>
 
-		init(_storage: _Storage<Element, Never>) {
-			self._storage = _storage
+		init(_storage: _Storage<Element, Failure>) {
+			self._context = _ContinuationContext(_storage: _storage)
 		}
 
 		public var onTermination: (@Sendable (Termination) -> Void)? {
 			get {
-				return convertToAsyncStreamOnTermination(self._storage.getOnTermination())
+				return convertToAsyncStreamOnTermination(self._context._storage.getOnTermination())
 			}
 			nonmutating set {
-				self._storage.setOnTermination(convertToContinuationOnTermination(newValue))
+				self._context._storage.setOnTermination(convertToContinuationOnTermination(newValue))
 			}
 		}
 
 		@discardableResult
 		public func yield(_ value: sending Element) -> YieldResult {
-			return self._storage.yield(value).convertToAsyncStreamYieldResult()
+			return self._context._storage.yield(value).convertToAsyncStreamYieldResult()
 		}
 
 		@discardableResult
 		public func yield(with result: sending Result<Element, Never>) -> YieldResult {
 			switch result {
 			case let .success(value):
-				return self._storage.yield(value).convertToAsyncStreamYieldResult()
+				return self._context._storage.yield(value).convertToAsyncStreamYieldResult()
 			}
 		}
 
 		public func finish() {
-			self._storage.terminate(.finished(nil))
+			self._context._storage.terminate(.finished(nil))
 		}
 	}
 }
@@ -60,21 +60,21 @@ extension AsyncStreamV2 {
 extension AsyncStreamV2.Continuation where Element == Void {
 	@discardableResult
 	public func yield() -> YieldResult {
-		return self._storage.yield(Void()).convertToAsyncStreamYieldResult()
+		return self._context._storage.yield(Void()).convertToAsyncStreamYieldResult()
 	}
 }
 
 extension AsyncStreamV2.Continuation: Hashable {
 	public func hash(
 		into hasher: inout Hasher) {
-			return hasher.combine(ObjectIdentifier(self._storage))
+			return hasher.combine(ObjectIdentifier(self._context._storage))
 		}
 
 	public static func == (
 		lhs: AsyncStreamV2<Element>.Continuation,
 		rhs: AsyncStreamV2<Element>.Continuation)
 	-> Bool {
-		return lhs._storage === rhs._storage
+		return lhs._context._storage === rhs._context._storage
 	}
 }
 

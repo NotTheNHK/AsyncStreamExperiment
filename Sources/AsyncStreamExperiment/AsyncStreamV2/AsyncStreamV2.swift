@@ -1,8 +1,8 @@
 
 public struct AsyncStreamV2<Element> {
-	private let _context: _Context<Element, Never>
+	private let _context: _StreamContext<Element, Never>
 
-	init(_context: _Context<Element, Never>) {
+	init(_context: _StreamContext<Element, Never>) {
 		self._context = _context
 	}
 }
@@ -11,9 +11,9 @@ extension AsyncStreamV2: @unchecked Sendable where Element: Sendable {}
 
 extension AsyncStreamV2: AsyncSequence {
 	public struct AsyncIterator: AsyncIteratorProtocol {
-		private let _context: _Context<Element, Never>
+		private let _context: _StreamContext<Element, Never>
 
-		init(_context: _Context<Element, Never>) {
+		init(_context: _StreamContext<Element, Never>) {
 			self._context = _context
 		}
 
@@ -34,7 +34,7 @@ extension AsyncStreamV2 {
 		_ build: (Continuation) -> Void) {
 			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
-			self._context = _Context(_storage: _storage, produce: _storage.next)
+			self._context = _StreamContext(_storage: _storage, produce: _storage.next)
 
 			build(Continuation(_storage: _storage))
 		}
@@ -46,7 +46,7 @@ extension AsyncStreamV2 {
 		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 		let continuation = AsyncStreamV2.Continuation(_storage: _storage)
-		let stream = AsyncStreamV2(_context: _Context(_storage: _storage, produce: _storage.next))
+		let stream = AsyncStreamV2(_context: _StreamContext(_storage: _storage, produce: _storage.next))
 
 		return (stream, continuation)
 	}
@@ -61,7 +61,7 @@ extension AsyncStreamV2 {
 				onCancel: onCancel)
 
 			// Once `withTaskCancellationHandler` `nonisolated(nonsending)` change lands `produce` will inherit the callers executor.
-			self._context = _Context {
+			self._context = _StreamContext {
 				return await withTaskCancellationHandler {
 					return await _unfoldingStorage.produce()
 				} onCancel: {

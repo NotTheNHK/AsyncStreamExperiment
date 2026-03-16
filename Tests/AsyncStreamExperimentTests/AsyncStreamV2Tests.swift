@@ -615,6 +615,26 @@ struct AsyncStreamV2Tests {
 		}
 	}
 
+	@Test("continuation out of scope cancels stream")
+	func continuationOutOfScope() async throws {
+		await confirmation { confirm in
+			let stream = AsyncStreamV2<Int> { continuation in
+				continuation.onTermination = { terminal in
+					switch terminal {
+					case .cancelled:
+						confirm()
+					case .finished:
+						Issue.record("Wrong terminal state")
+					}
+				}
+			}
+
+			let iterator = stream.makeAsyncIterator()
+
+			_ = await iterator.next()
+		}
+	}
+
 	// MARK: - Multiple Consumers
 
 	@Test("finish behavior with multiple consumers")

@@ -1,5 +1,5 @@
 
-final class _Context<Element, Failure: Error> {
+final class _StreamContext<Element, Failure: Error> {
 	let _storage: _Storage<Element, Failure>?
 	let produce: nonisolated(nonsending) () async throws(Failure) -> Element?
 

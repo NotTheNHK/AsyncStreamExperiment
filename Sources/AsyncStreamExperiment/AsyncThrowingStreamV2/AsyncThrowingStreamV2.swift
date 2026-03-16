@@ -1,8 +1,8 @@
 
 public struct AsyncThrowingStreamV2<Element, Failure: Error> {
-	private let _context: _Context<Element, Failure>
+	private let _context: _StreamContext<Element, Failure>
 
-	init(_context: _Context<Element, Failure>) {
+	init(_context: _StreamContext<Element, Failure>) {
 		self._context = _context
 	}
 }
@@ -11,9 +11,9 @@ extension AsyncThrowingStreamV2: @unchecked Sendable where Element: Sendable {}
 
 extension AsyncThrowingStreamV2: AsyncSequence {
 	public struct AsyncIterator: AsyncIteratorProtocol {
-		private let _context: _Context<Element, Failure>
+		private let _context: _StreamContext<Element, Failure>
 
-		init(_context: _Context<Element, Failure>) {
+		init(_context: _StreamContext<Element, Failure>) {
 			self._context = _context
 		}
 
@@ -35,7 +35,7 @@ extension AsyncThrowingStreamV2 {
 		_ build: (Continuation) -> Void) {
 			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
-			self._context = _Context(_storage: _storage, produce: _storage.next)
+			self._context = _StreamContext(_storage: _storage, produce: _storage.next)
 
 			build(Continuation(_storage: _storage))
 		}
@@ -48,7 +48,7 @@ extension AsyncThrowingStreamV2 {
 		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
-		let stream = AsyncThrowingStreamV2(_context: _Context(_storage: _storage, produce: _storage.next))
+		let stream = AsyncThrowingStreamV2(_context: _StreamContext(_storage: _storage, produce: _storage.next))
 
 		return (stream, continuation)
 	}
@@ -61,7 +61,7 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 		_ build: (Continuation) -> Void) {
 			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
-			self._context = _Context(_storage: _storage, produce: _storage.next)
+			self._context = _StreamContext(_storage: _storage, produce: _storage.next)
 
 			build(Continuation(_storage: _storage))
 		}
@@ -73,7 +73,7 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
 
 		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
-		let stream = AsyncThrowingStreamV2(_context: _Context(_storage: _storage, produce: _storage.next))
+		let stream = AsyncThrowingStreamV2(_context: _StreamContext(_storage: _storage, produce: _storage.next))
 
 		return (stream, continuation)
 	}
@@ -103,7 +103,7 @@ extension AsyncThrowingStreamV2 {
 				return try result.get()
 			}
 
-			self._context = _Context(produce: thunk)
+			self._context = _StreamContext(produce: thunk)
 		}
 }
 
@@ -116,7 +116,7 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 				onCancel: onCancel)
 
 			// Once `withTaskCancellationHandler` adopts `nonisolated(nonsending)` `produce` will inherit the callers executor.
-			self._context = _Context {
+			self._context = _StreamContext {
 				return try await withTaskCancellationHandler {
 					return try await _unfoldingStorage.produce()
 				} onCancel: {
