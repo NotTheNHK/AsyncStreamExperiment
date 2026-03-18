@@ -1,6 +1,6 @@
 
 extension AsyncThrowingStreamV2 {
-	public struct Continuation: Sendable {
+	public struct Continuation: @unchecked Sendable {
 		public enum BufferingPolicy: Sendable {
 			case unbounded
 
