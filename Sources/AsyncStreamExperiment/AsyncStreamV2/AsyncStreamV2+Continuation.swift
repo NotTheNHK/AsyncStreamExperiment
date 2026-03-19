@@ -31,23 +31,23 @@ extension AsyncStreamV2 {
 
 		public var onTermination: (@Sendable (Termination) -> Void)? {
 			get {
-				return convertToAsyncStreamOnTermination(self._context._storage.getOnTermination())
+				return adaptToStreamTerminationHandler(self._context._storage.getOnTermination())
 			}
 			nonmutating set {
-				self._context._storage.setOnTermination(convertToContinuationOnTermination(newValue))
+				self._context._storage.setOnTermination(adaptToStorageTerminationHandler(newValue))
 			}
 		}
 
 		@discardableResult
 		public func yield(_ value: sending Element) -> YieldResult {
-			return self._context._storage.yield(value).convertToAsyncStreamYieldResult()
+			return self._context._storage.yield(value).asStreamYieldResult()
 		}
 
 		@discardableResult
 		public func yield(with result: sending Result<Element, Never>) -> YieldResult {
 			switch result {
 			case let .success(value):
-				return self._context._storage.yield(value).convertToAsyncStreamYieldResult()
+				return self._context._storage.yield(value).asStreamYieldResult()
 			}
 		}
 
@@ -60,7 +60,7 @@ extension AsyncStreamV2 {
 extension AsyncStreamV2.Continuation where Element == Void {
 	@discardableResult
 	public func yield() -> YieldResult {
-		return self._context._storage.yield(Void()).convertToAsyncStreamYieldResult()
+		return self._context._storage.yield(Void()).asStreamYieldResult()
 	}
 }
 

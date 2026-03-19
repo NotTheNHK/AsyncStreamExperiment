@@ -31,23 +31,23 @@ extension AsyncThrowingStreamV2 {
 
 		public var onTermination: (@Sendable (Termination) -> Void)? {
 			get {
-				return convertToAsyncThrowingStreamOnTermination(self._context._storage.getOnTermination())
+				return adaptToStreamTerminationHandler(self._context._storage.getOnTermination())
 			}
 			nonmutating set {
-				self._context._storage.setOnTermination(convertToContinuationOnTermination(newValue))
+				self._context._storage.setOnTermination(adaptToStorageTerminationHandler(newValue))
 			}
 		}
 
 		@discardableResult
 		public func yield(_ value: sending Element) -> YieldResult {
-			return self._context._storage.yield(value).convertToAsyncThrowingStreamYieldResult()
+			return self._context._storage.yield(value).asStreamYieldResult()
 		}
 
 		@discardableResult
 		public func yield(with result: sending Result<Element, Failure>) -> YieldResult {
 			switch result {
 			case let .success(value):
-				return self._context._storage.yield(value).convertToAsyncThrowingStreamYieldResult()
+				return self._context._storage.yield(value).asStreamYieldResult()
 
 			case let .failure(failure):
 				self._context._storage.terminate(.finished(failure))
@@ -64,7 +64,7 @@ extension AsyncThrowingStreamV2 {
 extension AsyncThrowingStreamV2.Continuation where Element == Void {
 	@discardableResult
 	public func yield() -> YieldResult {
-		return self._context._storage.yield(Void()).convertToAsyncThrowingStreamYieldResult()
+		return self._context._storage.yield(Void()).asStreamYieldResult()
 	}
 }
 

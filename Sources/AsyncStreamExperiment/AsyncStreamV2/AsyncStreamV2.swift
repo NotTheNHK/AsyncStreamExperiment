@@ -32,7 +32,7 @@ extension AsyncStreamV2 {
 		_ elementType: Element.Type = Element.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
 		_ build: (Continuation) -> Void) {
-			let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
+			let _storage = _Storage(bufferPolicy: bufferingPolicy.asStorageBufferingPolicy())
 
 			self._context = _StreamContext(_storage: _storage, produce: _storage.next)
 
@@ -43,7 +43,7 @@ extension AsyncStreamV2 {
 		of elementType: Element.Type = Element.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
 	-> (stream: AsyncStreamV2<Element>, continuation: Continuation) {
-		let _storage = _Storage(bufferPolicy: bufferingPolicy.convertToContinuationBufferingPolicy())
+		let _storage = _Storage(bufferPolicy: bufferingPolicy.asStorageBufferingPolicy())
 
 		let continuation = AsyncStreamV2.Continuation(_storage: _storage)
 		let stream = AsyncStreamV2(_context: _StreamContext(_storage: _storage, produce: _storage.next))
