@@ -1,26 +1,26 @@
 
 extension _Storage {
-	struct Continuation {
-		enum BufferingPolicy {
-			case unbounded
+  internal struct Continuation {
+    internal enum BufferingPolicy {
+      case unbounded
 
-			case bufferingOldest(Int)
+      case bufferingOldest(Int)
 
-			case bufferingNewest(Int)
-		}
+      case bufferingNewest(Int)
+    }
 
-		enum YieldResult {
-			case enqueued(remaining: Int)
+    internal enum YieldResult {
+      case enqueued(remaining: Int)
 
-			case dropped(Element)
+      case dropped(Element)
 
-			case terminated
-		}
+      case terminated
+    }
 
-		enum Termination {
-			case finished(Failure?)
+    internal enum Termination {
+      case finished(Failure?)
 
-			case cancelled
-		}
-	}
+      case cancelled
+    }
+  }
 }
