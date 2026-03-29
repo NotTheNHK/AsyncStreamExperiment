@@ -8,10 +8,10 @@ internal final class _Storage<Element, Failure: Error>: @unchecked Sendable {
   typealias TerminationHandler = @Sendable (Continuation.Termination) -> Void
 
   private enum State {
-    case idle(
+    case buffering(
       buffer: Buffer)
 
-    case waiting(
+    case suspended(
       consumers: Consumers)
 
     case draining(
@@ -53,13 +53,13 @@ internal final class _Storage<Element, Failure: Error>: @unchecked Sendable {
   }
 
   private let lock = Lock.create()
-  private let bufferPolicy: Continuation.BufferingPolicy
+  private let bufferingPolicy: Continuation.BufferingPolicy
 
-  private var state = State.idle(buffer: [])
+  private var state = State.buffering(buffer: [])
   private var onTermination: TerminationHandler?
 
-  init(bufferPolicy: Continuation.BufferingPolicy) {
-    self.bufferPolicy = bufferPolicy
+  init(bufferingPolicy: Continuation.BufferingPolicy) {
+    self.bufferingPolicy = bufferingPolicy
   }
 
   deinit {
@@ -78,7 +78,7 @@ extension _Storage {
   func setOnTermination(_ newValue: TerminationHandler?) {
     lock.withLock {
       switch self.state {
-      case .idle, .waiting:
+      case .buffering, .suspended:
         self.onTermination = newValue
 
       case .draining, .terminated:
@@ -88,13 +88,16 @@ extension _Storage {
   }
 
   func yield(_ value: sending Element) -> Continuation.YieldResult {
-    let (result, action): (Continuation.YieldResult, YieldAction) = lock.withLock {
+    let (
+      result,
+      action
+    ): (Continuation.YieldResult, YieldAction) = lock.withLock {
       switch self.state {
-      case var .idle(buffer):
-        switch self.bufferPolicy {
+      case var .buffering(buffer):
+        switch self.bufferingPolicy {
         case .unbounded:
           buffer.append(value)
-          self.state = .idle(buffer: buffer)
+          self.state = .buffering(buffer: buffer)
           return (
             result: .enqueued(remaining: .max),
             action: .none)
@@ -103,7 +106,7 @@ extension _Storage {
           switch buffer.count < limit {
           case true:
             buffer.append(value)
-            self.state = .idle(buffer: buffer)
+            self.state = .buffering(buffer: buffer)
             return (
               result: .enqueued(remaining: limit - buffer.count),
               action: .none)
@@ -116,39 +119,39 @@ extension _Storage {
 
         case let .bufferingNewest(limit):
           switch limit {
-          case let limit where limit <= .zero:
-            return (
-              result: .dropped(value),
-              action: .none)
-
-          case let limit where buffer.count < limit:
+          case _ where buffer.count < limit && limit > .zero:
             buffer.append(value)
-            self.state = .idle(buffer: buffer)
+            self.state = .buffering(buffer: buffer)
             return (
               result: .enqueued(remaining: limit - buffer.count),
               action: .none)
 
-          default:
+          case _ where buffer.count >= limit && limit > .zero:
             let droppedValue = buffer.removeFirst()
             buffer.append(value)
-            self.state = .idle(buffer: buffer)
+            self.state = .buffering(buffer: buffer)
             return (
               result: .dropped(droppedValue),
+              action: .none)
+
+          default:
+            return (
+              result: .dropped(value),
               action: .none)
           }
         }
 
-      case var .waiting(consumers):
+      case var .suspended(consumers):
         let consumer = consumers.removeFirst()
 
         switch consumers.isEmpty {
         case true:
-          self.state = .idle(buffer: [])
+          self.state = .buffering(buffer: [])
         case false:
-          self.state = .waiting(consumers: consumers)
+          self.state = .suspended(consumers: consumers)
         }
 
-        switch self.bufferPolicy {
+        switch self.bufferingPolicy {
         case .unbounded:
           return (
             result: .enqueued(remaining: .max),
@@ -182,21 +185,21 @@ extension _Storage {
   func next(_ consumer: Consumer) {
     let action: NextAction = lock.withLock {
       switch self.state {
-      case var .idle(buffer):
+      case var .buffering(buffer):
         switch buffer.isEmpty {
         case true:
-          self.state = .waiting(consumers: [consumer])
+          self.state = .suspended(consumers: [consumer])
           return .suspend
 
         case false:
           let element = buffer.removeFirst()
-          self.state = .idle(buffer: buffer)
+          self.state = .buffering(buffer: buffer)
           return .resume(element: element)
         }
 
-      case var .waiting(consumers):
+      case var .suspended(consumers):
         consumers.append(consumer)
-        self.state = .waiting(consumers: consumers)
+        self.state = .suspended(consumers: consumers)
         return .suspend
 
       case .draining(var buffer, let failure):
@@ -253,19 +256,19 @@ extension _Storage {
   }
 
   func terminate(_ terminationReason: Continuation.Termination) {
+    let failure: Failure?
+
+    switch terminationReason {
+    case let .finished(withFailure):
+      failure = withFailure
+
+    case .cancelled:
+      failure = nil
+    }
+
     let action: TerminateAction = lock.withLock {
-      let failure: Failure?
-
-      switch terminationReason {
-      case let .finished(withFailure):
-        failure = withFailure
-
-      case .cancelled:
-        failure = nil
-      }
-
       switch self.state {
-      case let .idle(buffer):
+      case let .buffering(buffer):
         switch buffer.isEmpty {
         case true:
           self.state = .terminated(failure: failure)
@@ -276,7 +279,7 @@ extension _Storage {
         return .callHandler(
           terminationHandler: self.onTermination.take())
 
-      case let .waiting(consumers):
+      case let .suspended(consumers):
         self.state = .terminated()
         return .callHandlerAndResume(
           terminationHandler: self.onTermination.take(),

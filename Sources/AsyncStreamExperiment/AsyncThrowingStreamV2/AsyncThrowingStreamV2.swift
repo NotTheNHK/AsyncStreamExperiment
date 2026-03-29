@@ -33,7 +33,7 @@ extension AsyncThrowingStreamV2 {
 		_ failureType: Failure.Type = Failure.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
 		_ build: (Continuation) -> Void) {
-			let _storage = _Storage(bufferPolicy: bufferingPolicy.asStorageBufferingPolicy())
+			let _storage = _Storage(bufferingPolicy: bufferingPolicy.asStorageBufferingPolicy())
 
 			self._context = _StreamContext(_storage: _storage, produce: _storage.next)
 
@@ -45,7 +45,7 @@ extension AsyncThrowingStreamV2 {
 		throwing failureType: Failure.Type = Failure.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
 	-> (stream: AsyncThrowingStreamV2<Element, Failure>, continuation: Continuation) {
-		let _storage = _Storage(bufferPolicy: bufferingPolicy.asStorageBufferingPolicy())
+		let _storage = _Storage(bufferingPolicy: bufferingPolicy.asStorageBufferingPolicy())
 
 		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
 		let stream = AsyncThrowingStreamV2(_context: _StreamContext(_storage: _storage, produce: _storage.next))
@@ -59,7 +59,7 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 		_ elementType: Element.Type = Element.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded,
 		_ build: (Continuation) -> Void) {
-			let _storage = _Storage(bufferPolicy: bufferingPolicy.asStorageBufferingPolicy())
+			let _storage = _Storage(bufferingPolicy: bufferingPolicy.asStorageBufferingPolicy())
 
 			self._context = _StreamContext(_storage: _storage, produce: _storage.next)
 
@@ -70,7 +70,7 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 		of elementType: Element.Type = Element.self,
 		bufferingPolicy: Continuation.BufferingPolicy = .unbounded)
 	-> (stream: AsyncThrowingStreamV2<Element, Failure>, continuation: Continuation) {
-		let _storage = _Storage(bufferPolicy: bufferingPolicy.asStorageBufferingPolicy())
+		let _storage = _Storage(bufferingPolicy: bufferingPolicy.asStorageBufferingPolicy())
 
 		let continuation = AsyncThrowingStreamV2.Continuation(_storage: _storage)
 		let stream = AsyncThrowingStreamV2(_context: _StreamContext(_storage: _storage, produce: _storage.next))
