@@ -7,22 +7,22 @@ extension Lock {
 	static func create() -> Lock {
 		let lock = Lock.allocate(capacity: 1)
 
-		lock.initialize(to: .init())
+    unsafe lock.initialize(to: .init())
 
-		return lock
+    return unsafe lock
 	}
 
 	static func destroy(_ lock: Lock) {
-		lock.deinitialize(count: 1)
+    unsafe lock.deinitialize(count: 1)
 
-		lock.deallocate()
+    unsafe lock.deallocate()
 	}
 
 	func lock() {
-		os_unfair_lock_lock(self)
+    unsafe os_unfair_lock_lock(self)
 	}
 
 	func unlock() {
-		os_unfair_lock_unlock(self)
+    unsafe os_unfair_lock_unlock(self)
 	}
 }

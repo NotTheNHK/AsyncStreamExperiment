@@ -1,4 +1,5 @@
 
+@safe
 final class _UnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 	private let lock: Lock
 
@@ -8,20 +9,20 @@ final class _UnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 	init(
 		producer: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
 		onCancel: (@Sendable () -> Void)?) {
-			self.lock = .create()
+      unsafe self.lock = unsafe .create()
 			self.producer = producer
 			self.onCancel = onCancel
 		}
 
 	deinit {
-		Lock.destroy(lock)
+    unsafe Lock.destroy(lock)
 	}
 
 	nonisolated(nonsending)
 	func produce() async throws(Failure) -> Element? {
-		lock.lock() // TODO: `withLock` crashes the compiler here
+    unsafe lock.lock() // TODO: `withLock` crashes the compiler here
 		let producer = self.producer.take()
-		lock.unlock()
+    unsafe lock.unlock()
 
 		guard
 			let result = try await producer?()
@@ -50,10 +51,11 @@ final class _UnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 }
 
 extension _UnfoldingStorage {
+  @safe
   func withLock<Value>(_ action: () -> Value) -> Value {
-    lock.lock()
+    unsafe lock.lock()
 
-    defer { lock.unlock() }
+    defer { unsafe lock.unlock() }
 
     return action()
   }

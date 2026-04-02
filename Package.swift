@@ -25,7 +25,10 @@ let package = Package(
             name: "AsyncStreamExperiment",
 						dependencies: [
 							.product(name: "Collections", package: "swift-collections")
-						]
+						],
+            swiftSettings: [
+              .strictMemorySafety()
+            ]
         ),
         .testTarget(
             name: "AsyncStreamExperimentTests",
