@@ -18,14 +18,6 @@ extension Lock {
 		lock.deallocate()
 	}
 
-	func withLock<Value, Failure>(_ action: () throws(Failure) -> Value) throws(Failure) -> Value {
-		os_unfair_lock_lock(self)
-
-		defer { os_unfair_lock_unlock(self) }
-
-		return try action()
-	}
-
 	func lock() {
 		os_unfair_lock_lock(self)
 	}

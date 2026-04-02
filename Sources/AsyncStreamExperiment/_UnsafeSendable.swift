@@ -10,3 +10,27 @@ struct _UnsafeSendable<Value: ~Copyable>: @unchecked Sendable, ~Copyable {
 		return self.value
 	}
 }
+
+struct Disconnected<Value: ~Copyable>: ~Copyable, Sendable {
+  // This is safe since we take the value as sending and take consumes it
+  // and returns it as sending.
+  private nonisolated(unsafe) var value: Value?
+
+  @usableFromInline
+  init(value: consuming sending Value) {
+    self.value = .some(value)
+  }
+
+  @usableFromInline
+  consuming func take() -> sending Value {
+    nonisolated(unsafe) let value = self.value.take()!
+    return value
+  }
+
+  @usableFromInline
+  mutating func swap(newValue: consuming sending Value) -> sending Value {
+    nonisolated(unsafe) let value = self.value.take()!
+    self.value = consume newValue
+    return value
+  }
+}
