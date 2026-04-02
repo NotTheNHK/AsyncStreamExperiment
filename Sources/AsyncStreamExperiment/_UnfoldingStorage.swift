@@ -27,7 +27,7 @@ final class _UnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 			let result = try await producer?()
 		else { return nil }
 
-		lock.withLock {
+		withLock {
 			self.producer = producer
 		}
 
@@ -35,16 +35,26 @@ final class _UnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
 	}
 
 	func removeProduce() {
-		lock.withLock {
+		withLock {
 			self.producer = nil
 		}
 	}
 
 	func callOnCancel() {
-		let onCancel = lock.withLock {
+		let onCancel = withLock {
 			return self.onCancel.take()
 		}
 
 		onCancel?()
 	}
+}
+
+extension _UnfoldingStorage {
+  func withLock<Value>(_ action: () -> Value) -> Value {
+    lock.lock()
+
+    defer { lock.unlock() }
+
+    return action()
+  }
 }
