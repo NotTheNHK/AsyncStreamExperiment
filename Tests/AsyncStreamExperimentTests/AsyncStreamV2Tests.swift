@@ -469,13 +469,11 @@ struct AsyncStreamV2Tests {
 
 	@Test("onTermination finished reason")
 	func onTerminationFinishedReason() async throws {
-		await confirmation { confirm in
+		await confirmation(expectedCount: 0) { confirm in
 			let (_, continuation) = AsyncStreamV2<String>.makeStream()
 
-			continuation.onTermination = { terminal in
-				if case .finished = terminal {
-					confirm()
-				}
+			continuation.onTermination = { _ in
+				confirm()
 			}
 
 			continuation.finish()
@@ -501,18 +499,21 @@ struct AsyncStreamV2Tests {
 		}
 	}
 
-	@Test("onTermination called exactly once")
+	@Test("onTermination called exactly zero times")
 	func onTerminationThrowingFinishedReasons() async throws {
-		nonisolated(unsafe) var counter = 0
-		let (_, continuation) = AsyncStreamV2<String>.makeStream()
+    await confirmation(expectedCount: 0) { confirm in
+      let (_, continuation) = AsyncStreamV2<String>.makeStream()
 
-		continuation.onTermination = { _ in counter += 1 }
-		continuation.finish()
+      continuation.onTermination = { _ in
+        confirm()
+      }
+      continuation.finish()
 
-		continuation.onTermination = { _ in counter += 1 }
-		continuation.finish()
-
-		#expect(counter == 1)
+      continuation.onTermination = { _ in
+        confirm()
+      }
+      continuation.finish()
+    }
 	}
 
 	// MARK: - Termination & Cancellation

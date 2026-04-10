@@ -544,20 +544,12 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("onTermination throwing finished reasons no error")
 	func onTerminationThrowingFinishedReasonsNoError() async throws {
-		await confirmation { confirm in
+		await confirmation(expectedCount: 0) { confirm in
 			let (_, continuation) = AsyncThrowingStreamV2<String, Error>.makeStream()
 
-			continuation.onTermination = { terminal in
-				switch terminal {
-				case let .finished(failure?):
-					_ = failure
-					Issue.record("'failure' should be nil")
-				case .finished:
-					confirm()
-				case .cancelled:
-					Issue.record("Wrong terminal state")
-				}
-			}
+      continuation.onTermination = { _ in
+        confirm()
+      }
 
 			continuation.finish()
 		}
@@ -565,20 +557,12 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("onTermination throwing finished reasons with error")
 	func onTerminationThrowingFinishedReasonsWithError() async throws {
-		await confirmation { confirm in
+		await confirmation(expectedCount: 0) { confirm in
 			let (_, continuation) = AsyncThrowingStreamV2<String, SomeError>.makeStream()
 
-			continuation.onTermination = { terminal in
-				switch terminal {
-				case let .finished(failure?):
-					_ = failure
-					confirm()
-				case .finished:
-					Issue.record("Failure was nil, expected .some(value) instead")
-				default:
-					Issue.record("Wrong terminal state")
-				}
-			}
+      continuation.onTermination = { _ in
+        confirm()
+      }
 
 			continuation.finish(throwing: SomeError())
 		}

@@ -3,13 +3,13 @@ import Collections
 
 @safe
 final class _Storage<Element, Failure: Error>: @unchecked Sendable {
-  @unsafe
+  @safe
   struct _StateMachine: ~Copyable {
     typealias Buffer = Deque<Element>
-    typealias Consumer = UnsafeContinuation<Result<Element?, Failure>, Never>
-    typealias Consumers = Deque<Consumer>
+    typealias Consumer = UnsafeContinuation<Result<Element?, Failure>, Never> // TODO: Switch to ~Copyable Continuation type
+    typealias Consumers = Deque<Consumer> // TODO: Switch to UniqueDeque
     typealias TerminationHandler = @Sendable (Continuation.Termination) -> Void
-    
+
     @unsafe
     enum State: ~Copyable {
       struct Idle: ~Copyable {
@@ -57,54 +57,65 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
     }
 
     @unsafe
-    enum TerminateAction {
-      case callHandlerAndResume(
-        terminationHandler: TerminationHandler?,
-        consumers: Consumers,
-        failure: Failure?
+    enum NextAction {
+      case resume(
+        consumer: Consumer,
+        element: Element?
       )
 
-      case callHandler(terminationHandler: TerminationHandler?)
-
-      case none
-    }
-
-    enum NextAction {
-      case resume(element: Element?)
-
-      case `throw`(failure: Failure)
+      case `throw`(
+        consumer: Consumer,
+        failure: Failure
+      )
 
       case suspend
     }
 
-    var state: State
+    @unsafe
+    enum TerminateAction: ~Copyable {
+      @unsafe
+      struct CallAndResume: ~Copyable {
+        let terminationHandler: TerminationHandler?
+        var consumers: Consumers
+        let failure: Failure?
+      }
 
-    init(bufferingPolicy: Continuation.BufferingPolicy) {
-      unsafe self.state = unsafe .idle(.init(
-          buffer: [],
-          bufferingPolicy: bufferingPolicy,
-          terminationHandler: nil
-        )
-      )
+      case callAndResume(CallAndResume)
+
+      case call(terminationHandler: TerminationHandler?)
+
+      case none
     }
+
+    private var state: State
 
     init(state: consuming State) {
       unsafe self.state = unsafe state
     }
+
+    init(bufferingPolicy: Continuation.BufferingPolicy) {
+      unsafe self.state = unsafe .idle(.init(
+        buffer: [],
+        bufferingPolicy: bufferingPolicy,
+        terminationHandler: nil
+      )
+      )
+    }
   }
 
   private let lock: Lock
-
   private var _stateMachine: _StateMachine
 
   init(bufferingPolicy: Continuation.BufferingPolicy) {
-    unsafe self.lock = unsafe .create()
-    unsafe self._stateMachine = unsafe _StateMachine(bufferingPolicy: bufferingPolicy)
+    unsafe self.lock = .create()
+    self._stateMachine = _StateMachine(
+      bufferingPolicy: bufferingPolicy
+    )
   }
 
   deinit {
     self.terminate(.cancelled)
-    unsafe Lock.destroy(self.lock)
+    unsafe self.lock.deallocate()
   }
 }
 
@@ -129,19 +140,19 @@ extension _Storage._StateMachine {
     switch unsafe consume self.state { // TODO: Set a TerminationHandler only in certain states
     case .idle(var idle):
       idle.terminationHandler = newValue
-      unsafe self = unsafe .init(state: .idle(idle))
+      unsafe self = .init(state: .idle(idle))
 
     case .waiting(var waiting):
       unsafe waiting.terminationHandler = newValue
-      unsafe self = unsafe .init(state: .waiting(waiting))
+      unsafe self = .init(state: .waiting(waiting))
 
     case .draining(var draining):
       draining.terminationHandler = newValue
-      unsafe self = unsafe .init(state: .draining(draining))
+      unsafe self = .init(state: .draining(draining))
 
     case .terminated(var terminated):
       terminated.terminationHandler = newValue
-      unsafe self = unsafe .init(state: .terminated(terminated))
+      unsafe self = .init(state: .terminated(terminated))
     }
   }
 
@@ -151,19 +162,19 @@ extension _Storage._StateMachine {
       switch idle.bufferingPolicy {
       case .unbounded:
         idle.buffer.append(value)
-        unsafe self = unsafe .init(state: .idle(idle))
+        unsafe self = .init(state: .idle(idle))
         return unsafe .none(yieldResult: .enqueued(remaining: .max))
 
       case .bufferingOldest(let limit):
         switch idle.buffer.count < limit {
         case true:
           idle.buffer.append(value)
-          let bufferCount = idle.buffer.count
-          unsafe self = unsafe .init(state: .idle(idle))
-          return unsafe .none(yieldResult: .enqueued(remaining: limit - bufferCount))
+          let count = idle.buffer.count
+          unsafe self = .init(state: .idle(idle))
+          return unsafe .none(yieldResult: .enqueued(remaining: limit - count))
 
         case false:
-          unsafe self = unsafe .init(state: .idle(idle))
+          unsafe self = .init(state: .idle(idle))
           return unsafe .none(yieldResult: .dropped(value))
         }
 
@@ -171,18 +182,18 @@ extension _Storage._StateMachine {
         switch limit {
         case _ where idle.buffer.count < limit && limit > .zero:
           idle.buffer.append(value)
-          let bufferCount = idle.buffer.count
-          unsafe self = unsafe .init(state: .idle(idle))
-          return unsafe .none(yieldResult: .enqueued(remaining: limit - bufferCount))
+          let count = idle.buffer.count
+          unsafe self = .init(state: .idle(idle))
+          return unsafe .none(yieldResult: .enqueued(remaining: limit - count))
 
         case _ where idle.buffer.count >= limit && limit > .zero:
           let droppedValue = idle.buffer.removeFirst()
           idle.buffer.append(value)
-          unsafe self = unsafe .init(state: .idle(idle))
+          unsafe self = .init(state: .idle(idle))
           return unsafe .none(yieldResult: .dropped(droppedValue))
 
         default:
-          unsafe self = unsafe .init(state: .idle(idle))
+          unsafe self = .init(state: .idle(idle))
           return unsafe .none(yieldResult: .dropped(value))
         }
       }
@@ -193,16 +204,16 @@ extension _Storage._StateMachine {
 
       switch unsafe waiting.consumers.isEmpty {
       case true:
-        unsafe self = unsafe .init(state: .idle(.init(
-              buffer: [],
-              bufferingPolicy: waiting.bufferingPolicy,
-              terminationHandler: waiting.terminationHandler
-            )
-          )
+        unsafe self = .init(state: .idle(.init(
+          buffer: [],
+          bufferingPolicy: waiting.bufferingPolicy,
+          terminationHandler: waiting.terminationHandler
+        )
+        )
         )
 
       case false:
-        unsafe self = unsafe .init(state: .waiting(waiting))
+        unsafe self = .init(state: .waiting(waiting))
       }
 
       switch bufferingPolicy {
@@ -222,43 +233,12 @@ extension _Storage._StateMachine {
       }
 
     case .draining(let draining):
-      unsafe self = unsafe .init(state: .draining(draining))
+      unsafe self = .init(state: .draining(draining))
       return unsafe .none(yieldResult: .terminated)
 
     case .terminated(let terminated):
-      unsafe self = unsafe .init(state: .terminated(terminated))
+      unsafe self = .init(state: .terminated(terminated))
       return unsafe .none(yieldResult: .terminated)
-    }
-  }
-
-  mutating func terminate(_ failure: consuming Failure?) -> TerminateAction {
-    switch unsafe consume self.state {
-    case .idle(var idle):
-      switch idle.buffer.isEmpty {
-      case true:
-        unsafe self = unsafe .init(state: .terminated(.init(failure: failure)))
-        return unsafe .callHandler(terminationHandler: idle.terminationHandler.take())
-
-      case false:
-        unsafe self = unsafe .init(state: .draining(.init(failure: failure, buffer: idle.buffer)))
-        return unsafe .callHandler(terminationHandler: idle.terminationHandler.take())
-      }
-
-    case .waiting(var waiting):
-      unsafe self = unsafe .init(state: .terminated(.init(failure: .none)))
-      return unsafe .callHandlerAndResume(
-        terminationHandler: waiting.terminationHandler.take(),
-        consumers: waiting.consumers,
-        failure: failure
-      )
-
-    case .draining(let draining):
-      unsafe self = unsafe .init(state: .draining(draining))
-      return unsafe .none
-
-    case .terminated(let terminated):
-      unsafe self = unsafe .init(state: .terminated(terminated))
-      return unsafe .none
     }
   }
 
@@ -267,76 +247,134 @@ extension _Storage._StateMachine {
     case .idle(var idle):
       switch idle.buffer.isEmpty {
       case true:
-        unsafe self = unsafe .init(state: .waiting(.init(
-              consumers: [consumer],
-              bufferingPolicy: idle.bufferingPolicy,
-              terminationHandler: idle.terminationHandler
-            )
-          )
+        unsafe self = .init(state: .waiting(.init(
+          consumers: [consumer],
+          bufferingPolicy: idle.bufferingPolicy,
+          terminationHandler: idle.terminationHandler
         )
-        return .suspend
+        )
+        )
+        return unsafe .suspend
 
       case false:
         let element = idle.buffer.removeFirst()
-        unsafe self = unsafe .init(state: .idle(idle))
-        return .resume(element: element)
+        unsafe self = .init(state: .idle(idle))
+        return unsafe .resume(
+          consumer: consumer,
+          element: element
+        )
       }
 
     case .waiting(var waiting):
       unsafe waiting.consumers.append(consumer)
-      unsafe self = unsafe .init(state: .waiting(waiting))
-      return .suspend
+      unsafe self = .init(state: .waiting(waiting))
+      return unsafe .suspend
 
     case .draining(var draining):
       guard
         let element = draining.buffer.popFirst()
       else {
-        unsafe self = unsafe .init(state: .terminated(.init(
-              failure: .none,
-              terminationHandler: draining.terminationHandler
-            )
-          )
+        unsafe self = .init(state: .terminated(.init(
+          failure: nil,
+          terminationHandler: draining.terminationHandler
+        )
+        )
         )
 
         switch draining.failure {
         case .some(let failure):
-          return .throw(failure: failure)
+          return unsafe .throw(
+            consumer: consumer,
+            failure: failure
+          )
 
         case .none:
-          return .resume(element: nil)
+          return unsafe .resume(
+            consumer: consumer,
+            element: nil
+          )
         }
       }
 
       switch draining.buffer.isEmpty {
       case true:
-        unsafe self = unsafe .init(state: .terminated(.init(
-              failure: draining.failure,
-              terminationHandler: draining.terminationHandler
-            )
-          )
+        unsafe self = .init(state: .terminated(.init(
+          failure: draining.failure,
+          terminationHandler: draining.terminationHandler
         )
-        return .resume(element: element)
+        )
+        )
+        return unsafe .resume(
+          consumer: consumer,
+          element: element
+        )
 
       case false:
-        unsafe self = unsafe .init(state: .draining(draining))
-        return .resume(element: element)
+        unsafe self = .init(state: .draining(draining))
+        return unsafe .resume(
+          consumer: consumer,
+          element: element
+        )
       }
 
     case .terminated(let terminated):
-      unsafe self = unsafe .init(state: .terminated(.init(
-            failure: .none,
-            terminationHandler: nil
-          )
-        )
+      unsafe self = .init(state: .terminated(.init(
+        failure: nil,
+        terminationHandler: nil
+      )
+      )
       )
 
       switch terminated.failure {
       case .some(let failure):
-        return .throw(failure: failure)
+        return unsafe .throw(
+          consumer: consumer,
+          failure: failure
+        )
 
       case .none:
-        return .resume(element: nil)
+        return unsafe .resume(
+          consumer: consumer,
+          element: nil
+        )
       }
+    }
+  }
+
+  mutating func terminate(_ failure: consuming Failure?) -> TerminateAction {
+    switch unsafe consume self.state {
+    case .idle(var idle):
+      switch idle.buffer.isEmpty {
+      case true:
+        unsafe self = .init(state: .terminated(.init(failure: failure)))
+        return unsafe .call(terminationHandler: idle.terminationHandler.take())
+
+      case false:
+        unsafe self = .init(state: .draining(.init(
+          failure: failure,
+          buffer: idle.buffer
+        )
+        )
+        )
+        return unsafe .call(terminationHandler: idle.terminationHandler.take())
+      }
+
+    case .waiting(var waiting):
+      unsafe self = .init(state: .terminated(.init(failure: nil)))
+      return unsafe .callAndResume(.init(
+        terminationHandler: waiting.terminationHandler.take(),
+        consumers: waiting.consumers,
+        failure: failure
+      )
+      )
+
+    case .draining(let draining):
+      unsafe self = .init(state: .draining(draining))
+      return unsafe .none
+
+    case .terminated(let terminated):
+      unsafe self = .init(state: .terminated(terminated))
+      return unsafe .none
     }
   }
 }
@@ -344,21 +382,20 @@ extension _Storage._StateMachine {
 extension _Storage {
   func getOnTermination() -> _StateMachine.TerminationHandler? {
     withLock { state in
-      return unsafe state.getOnTermination()
+      return state.getOnTermination()
     }
   }
 
   func setOnTermination(_ newValue: _StateMachine.TerminationHandler?) {
     withLock { state in
-      unsafe state.setOnTermination(newValue)
+      state.setOnTermination(newValue)
     }
   }
 
   func yield(_ value: consuming sending Element) -> Continuation.YieldResult {
-    var disconnectedValue = UnsafeSendable(value: Optional(value))
-
+    var unsafeSendable = UnsafeSendable(value: Optional(value))
     let action = withLock { state in
-      let value = disconnectedValue.swap(newValue: nil)!
+      let value = unsafeSendable.swap(newValue: nil)!
       return unsafe state.yield(value)
     }
 
@@ -370,6 +407,33 @@ extension _Storage {
     case .none(let yieldResult):
       return yieldResult
     }
+  }
+
+  func next(_ consumer: consuming _StateMachine.Consumer) {
+    let action = withLock { state in
+      unsafe state.next(consumer)
+    }
+
+    switch unsafe action {
+    case .resume(let consumer, let element):
+      unsafe consumer.resume(returning: .success(element))
+
+    case .throw(let consumer, let failure):
+      unsafe consumer.resume(returning: .failure(failure))
+
+    case .suspend:
+      return
+    }
+  }
+
+  nonisolated(nonsending) func next() async throws(Failure) -> Element? {
+    return try await withTaskCancellationHandler {
+      return unsafe await withUnsafeContinuation { consumer in
+        unsafe self.next(consumer)
+      }
+    } onCancel: {
+      self.terminate(.cancelled)
+    }.get()
   }
 
   func terminate(_ terminationReason: Continuation.Termination) {
@@ -387,66 +451,37 @@ extension _Storage {
       return unsafe state.terminate(failure)
     }
 
-    switch unsafe action {
-    case .callHandlerAndResume(
-      let terminationHandler,
-      var consumers,
-      let failure
-    ):
-      terminationHandler?(terminationReason)
+    switch unsafe consume action {
+    case .callAndResume(var callAndResume):
+      unsafe callAndResume.terminationHandler?(terminationReason)
 
-      if let failure {
-        let consumer = unsafe consumers.popFirst()
+      if let failure = unsafe callAndResume.failure {
+        let consumer = unsafe callAndResume.consumers.popFirst()
         unsafe consumer?.resume(returning: .failure(failure))
       }
 
-      while let consumer = unsafe consumers.popFirst() {
+      while let consumer = unsafe callAndResume.consumers.popFirst() {
         unsafe consumer.resume(returning: .success(nil))
       }
 
-    case .callHandler(let terminationHandler):
+    case .call(let terminationHandler):
       terminationHandler?(terminationReason)
 
     case .none:
       return
     }
   }
-
-  func next(_ consumer: consuming _StateMachine.Consumer) {
-    let action = withLock { state in
-      unsafe state.next(consumer)
-    }
-
-    switch action {
-    case .resume(let element):
-      unsafe consumer.resume(returning: .success(element))
-
-    case .throw(let failure):
-      unsafe consumer.resume(returning: .failure(failure))
-
-    case .suspend:
-      return
-    }
-  }
-
-  nonisolated(nonsending) func next() async throws(Failure) -> Element? {
-    return try await withTaskCancellationHandler {
-      return unsafe await withUnsafeContinuation { consumer in
-        unsafe self.next(consumer)
-      }
-    } onCancel: {
-      self.terminate(.cancelled)
-    }.get()
-  }
 }
 
 extension _Storage {
   @safe
-  func withLock<Value>(_ action: (inout _StateMachine) -> Value) -> Value {
+  private func withLock<Value: ~Copyable>(
+    _ action: (inout _StateMachine) -> Value
+  ) -> Value {
     unsafe lock.lock()
 
-    defer { unsafe lock.unlock() }
+    defer { unsafe self.lock.unlock() }
 
-    return unsafe action(&self._stateMachine)
+    return action(&self._stateMachine)
   }
 }
