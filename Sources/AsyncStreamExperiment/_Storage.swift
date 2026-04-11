@@ -95,10 +95,10 @@ final class _Storage<Element, Failure: Error>: @unchecked Sendable {
 
     init(bufferingPolicy: Continuation.BufferingPolicy) {
       unsafe self.state = unsafe .idle(.init(
-        buffer: [],
-        bufferingPolicy: bufferingPolicy,
-        terminationHandler: nil
-      )
+          buffer: [],
+          bufferingPolicy: bufferingPolicy,
+          terminationHandler: nil
+        )
       )
     }
   }
@@ -205,11 +205,11 @@ extension _Storage._StateMachine {
       switch unsafe waiting.consumers.isEmpty {
       case true:
         unsafe self = .init(state: .idle(.init(
-          buffer: [],
-          bufferingPolicy: waiting.bufferingPolicy,
-          terminationHandler: waiting.terminationHandler
-        )
-        )
+              buffer: [],
+              bufferingPolicy: waiting.bufferingPolicy,
+              terminationHandler: waiting.terminationHandler
+            )
+          )
         )
 
       case false:
@@ -248,11 +248,11 @@ extension _Storage._StateMachine {
       switch idle.buffer.isEmpty {
       case true:
         unsafe self = .init(state: .waiting(.init(
-          consumers: [consumer],
-          bufferingPolicy: idle.bufferingPolicy,
-          terminationHandler: idle.terminationHandler
-        )
-        )
+              consumers: [consumer],
+              bufferingPolicy: idle.bufferingPolicy,
+              terminationHandler: idle.terminationHandler
+            )
+          )
         )
         return unsafe .suspend
 
@@ -275,10 +275,10 @@ extension _Storage._StateMachine {
         let element = draining.buffer.popFirst()
       else {
         unsafe self = .init(state: .terminated(.init(
-          failure: nil,
-          terminationHandler: draining.terminationHandler
-        )
-        )
+              failure: nil,
+              terminationHandler: draining.terminationHandler
+            )
+          )
         )
 
         switch draining.failure {
@@ -299,10 +299,10 @@ extension _Storage._StateMachine {
       switch draining.buffer.isEmpty {
       case true:
         unsafe self = .init(state: .terminated(.init(
-          failure: draining.failure,
-          terminationHandler: draining.terminationHandler
-        )
-        )
+              failure: draining.failure,
+              terminationHandler: draining.terminationHandler
+            )
+          )
         )
         return unsafe .resume(
           consumer: consumer,
@@ -319,10 +319,10 @@ extension _Storage._StateMachine {
 
     case .terminated(let terminated):
       unsafe self = .init(state: .terminated(.init(
-        failure: nil,
-        terminationHandler: nil
-      )
-      )
+            failure: nil,
+            terminationHandler: nil
+          )
+        )
       )
 
       switch terminated.failure {
@@ -351,10 +351,10 @@ extension _Storage._StateMachine {
 
       case false:
         unsafe self = .init(state: .draining(.init(
-          failure: failure,
-          buffer: idle.buffer
-        )
-        )
+              failure: failure,
+              buffer: idle.buffer
+            )
+          )
         )
         return unsafe .call(terminationHandler: idle.terminationHandler.take())
       }
@@ -362,10 +362,10 @@ extension _Storage._StateMachine {
     case .waiting(var waiting):
       unsafe self = .init(state: .terminated(.init(failure: nil)))
       return unsafe .callAndResume(.init(
-        terminationHandler: waiting.terminationHandler.take(),
-        consumers: waiting.consumers,
-        failure: failure
-      )
+          terminationHandler: waiting.terminationHandler.take(),
+          consumers: waiting.consumers,
+          failure: failure
+        )
       )
 
     case .draining(let draining):

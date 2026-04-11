@@ -1,62 +1,86 @@
 
 @safe
 final class _UnfoldingStorage<Element, Failure: Error>: @unchecked Sendable {
-	private let lock: Lock
+  typealias Producer = (nonisolated(nonsending) () async throws(Failure) -> Element?)?
+  typealias OnCancel = (@Sendable () -> Void)?
 
-	private var producer: (nonisolated(nonsending) () async throws(Failure) -> Element?)?
-	private var onCancel: (@Sendable () -> Void)?
+  enum State {
+    case producing(
+      producer: Producer,
+      onCancel: OnCancel
+    )
 
-	init(
-		producer: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
-		onCancel: (@Sendable () -> Void)?) {
-      unsafe self.lock = unsafe .create()
-			self.producer = producer
-			self.onCancel = onCancel
-		}
+    case terminated
+  }
 
-	deinit {
-    unsafe Lock.destroy(lock)
-	}
+  private let lock: Lock
+  private var state: State
 
-	nonisolated(nonsending)
-	func produce() async throws(Failure) -> Element? {
-    unsafe lock.lock() // TODO: `withLock` crashes the compiler here
-		let producer = self.producer.take()
-    unsafe lock.unlock()
+  init(
+    producer: Producer,
+    onCancel: OnCancel
+  ) {
+    unsafe self.lock = unsafe .create()
+    self.state = .producing(
+      producer: producer,
+      onCancel: onCancel
+    )
+  }
 
-		guard
-			let result = try await producer?()
-		else { return nil }
+  deinit {
+    unsafe Lock.destroy(self.lock)
+  }
+}
 
-		withLock {
-			self.producer = producer
-		}
+extension _UnfoldingStorage {
+  nonisolated(nonsending) func next() async throws(Failure) -> Element? {
+    let producer = withLock { state in
+      switch state {
+      case .producing(let producer, _):
+        return producer
 
-		return result
-	}
+      case .terminated:
+        return nil
+      }
+    }
 
-	func removeProduce() {
-		withLock {
-			self.producer = nil
-		}
-	}
+    switch try await producer?() {
+    case .some(let element):
+      return element
 
-	func callOnCancel() {
-		let onCancel = withLock {
-			return self.onCancel.take()
-		}
+    case .none:
+      withLock { state in
+        state = .terminated
+      }
+      return nil
+    }
+  }
 
-		onCancel?()
-	}
+  func terminate() {
+    let onCancel = withLock { state in
+      switch state {
+      case .producing(_, onCancel: let onCancel):
+        state = .terminated
+        return onCancel
+
+      case .terminated:
+        return nil
+      }
+    }
+
+    onCancel?()
+  }
 }
 
 extension _UnfoldingStorage {
   @safe
-  func withLock<Value>(_ action: () -> Value) -> Value {
+  private func withLock<Value: ~Copyable>(
+    _ action: (inout State) -> Value
+  ) -> Value {
     unsafe lock.lock()
 
-    defer { unsafe lock.unlock() }
+    defer { unsafe self.lock.unlock() }
 
-    return action()
+    return action(&self.state)
   }
 }

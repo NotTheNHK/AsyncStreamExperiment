@@ -80,49 +80,47 @@ extension AsyncThrowingStreamV2 where Failure == any Error {
 }
 
 extension AsyncThrowingStreamV2 {
-	public init(
-		unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
-		onCancel: (@Sendable () -> Void)? = nil) {
-			let _unfoldingStorage = _UnfoldingStorage(
-				producer: produce,
-				onCancel: onCancel)
+  public init(
+    unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
+    onCancel: (@Sendable () -> Void)? = nil) {
+      let _unfoldingStorage = _UnfoldingStorage(
+        producer: produce,
+        onCancel: onCancel)
 
-			// Once `withTaskCancellationHandler` adopts `nonisolated(nonsending)` `produce` will inherit the callers executor.
-			let thunk: nonisolated(nonsending) () async throws(Failure) -> Element? = {
-				let result: Result<Element?, Failure> = await withTaskCancellationHandler {
-					do throws(Failure) {
-						return try await .success(_unfoldingStorage.produce())
-					} catch {
-						return .failure(error)
-					}
-				} onCancel: {
-					_unfoldingStorage.removeProduce()
-					_unfoldingStorage.callOnCancel()
-				}
+      // Once `withTaskCancellationHandler` adopts `nonisolated(nonsending)` `produce` will inherit the callers executor.
+      let thunk: nonisolated(nonsending) () async throws(Failure) -> Element? = {
+        let result: Result<Element?, Failure> = await withTaskCancellationHandler {
+          do throws(Failure) {
+            return try await .success(_unfoldingStorage.next())
+          } catch {
+            return .failure(error)
+          }
+        } onCancel: {
+          _unfoldingStorage.terminate()
+        }
 
-				return try result.get()
-			}
+        return try result.get()
+      }
 
-			self._context = _StreamContext(produce: thunk)
-		}
+      self._context = _StreamContext(produce: thunk)
+    }
 }
 
 extension AsyncThrowingStreamV2 where Failure == any Error {
-	public init(
-		unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
-		onCancel: (@Sendable () -> Void)? = nil) {
-			let _unfoldingStorage = _UnfoldingStorage(
-				producer: produce,
-				onCancel: onCancel)
+  public init(
+    unfolding produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?,
+    onCancel: (@Sendable () -> Void)? = nil) {
+      let _unfoldingStorage = _UnfoldingStorage(
+        producer: produce,
+        onCancel: onCancel)
 
-			// Once `withTaskCancellationHandler` adopts `nonisolated(nonsending)` `produce` will inherit the callers executor.
-			self._context = _StreamContext {
-				return try await withTaskCancellationHandler {
-					return try await _unfoldingStorage.produce()
-				} onCancel: {
-					_unfoldingStorage.removeProduce()
-					_unfoldingStorage.callOnCancel()
-				}
-			}
-		}
+      // Once `withTaskCancellationHandler` adopts `nonisolated(nonsending)` `produce` will inherit the callers executor.
+      self._context = _StreamContext {
+        return try await withTaskCancellationHandler {
+          return try await _unfoldingStorage.next()
+        } onCancel: {
+          _unfoldingStorage.terminate()
+        }
+      }
+    }
 }

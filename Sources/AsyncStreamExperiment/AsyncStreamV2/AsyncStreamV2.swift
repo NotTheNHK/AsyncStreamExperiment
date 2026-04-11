@@ -63,10 +63,9 @@ extension AsyncStreamV2 {
 			// Once `withTaskCancellationHandler` `nonisolated(nonsending)` change lands `produce` will inherit the callers executor.
 			self._context = _StreamContext {
 				return await withTaskCancellationHandler {
-					return await _unfoldingStorage.produce()
+					return await _unfoldingStorage.next()
 				} onCancel: {
-					_unfoldingStorage.removeProduce()
-					_unfoldingStorage.callOnCancel()
+          _unfoldingStorage.terminate()
 				}
 			}
 		}

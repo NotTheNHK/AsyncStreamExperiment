@@ -31,7 +31,7 @@ struct AsyncThrowingStreamV2Tests {
 
 	@Test("unfolding init: basic throwing")
 	func unfoldingBasicThrowing() async throws {
-		nonisolated(unsafe) var counter = 0
+		var counter = 0
 
 		let stream = AsyncThrowingStreamV2<Int, Error>(unfolding: {
 			counter += 1
@@ -45,6 +45,8 @@ struct AsyncThrowingStreamV2Tests {
 		#expect(try await iterator.next(isolation: #isolation) == 2)
 		#expect(try await iterator.next(isolation: #isolation) == 3)
 		#expect(try await iterator.next(isolation: #isolation) == nil)
+    #expect(try await iterator.next(isolation: #isolation) == nil)
+    #expect(try await iterator.next(isolation: #isolation) == nil)
 	}
 
 	@Test("unfolding init: onCancel called when task is cancelled Throwing")
@@ -98,6 +100,7 @@ struct AsyncThrowingStreamV2Tests {
 			try await iterator.next(isolation: #isolation)
 		}
 		#expect(try await iterator.next(isolation: #isolation) == nil)
+    #expect(try await iterator.next(isolation: #isolation) == nil)
 	}
 
 	@Test("unfolding init: onCancel called only once Throwing")

@@ -1,7 +1,7 @@
 
 extension _Storage {
-  internal struct Continuation {
-    internal enum BufferingPolicy {
+  struct Continuation {
+    enum BufferingPolicy {
       case unbounded
 
       case bufferingOldest(Int)
@@ -9,7 +9,7 @@ extension _Storage {
       case bufferingNewest(Int)
     }
 
-    internal enum YieldResult {
+    enum YieldResult {
       case enqueued(remaining: Int)
 
       case dropped(Element)
@@ -17,7 +17,7 @@ extension _Storage {
       case terminated
     }
 
-    internal enum Termination {
+    enum Termination {
       case finished(Failure?)
 
       case cancelled

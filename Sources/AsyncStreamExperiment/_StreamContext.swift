@@ -1,11 +1,13 @@
 
 final class _StreamContext<Element, Failure: Error> {
+  typealias Producer = nonisolated(nonsending) () async throws(Failure) -> Element?
+
   let _storage: _Storage<Element, Failure>?
-  let produce: nonisolated(nonsending) () async throws(Failure) -> Element?
+  let produce: Producer
 
   init(
     _storage: _Storage<Element, Failure>? = nil,
-    produce: nonisolated(nonsending) sending @escaping () async throws(Failure) -> Element?) {
+    produce: @escaping Producer) {
       self._storage = _storage
       self.produce = produce
     }
